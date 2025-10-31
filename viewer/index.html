@@ -31,9 +31,49 @@
             padding: 20px;
             border-radius: 12px;
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
             min-width: 280px;
+            max-width: 320px;
             z-index: 1000;
+            transition: all 0.3s ease;
+        }
+        
+        #hud.minimized {
+            padding: 10px 15px;
+            min-width: auto;
+        }
+        
+        #hud.minimized .hud-content {
+            display: none;
+        }
+        
+        .hud-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .minimize-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #64b5f6;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .minimize-btn:hover {
+            background: rgba(100, 181, 246, 0.2);
+            border-color: #64b5f6;
         }
         
         #hud h3 {
@@ -150,22 +190,31 @@
 </head>
 <body>
     <div id="hud">
-        <h3>🌌 3D Space Explorer</h3>
-        <div class="status" id="status">Initializing...</div>
-        
-        <div class="button-group">
-            <button id="resetCamera">🏠 Reset View</button>
+        <div class="hud-header">
+            <h3 style="margin: 0;">🌌 3D Space Explorer</h3>
+            <button class="minimize-btn" id="minimizeBtn" title="Minimize HUD">−</button>
         </div>
+        <div class="hud-content">
+            <div class="status" id="status">Initializing...</div>
+            
+            <div class="button-group">
+                <button id="resetCamera">🏠 Reset View</button>
+                <button id="toggleStarLabels">⭐ Hide Legendary Stars</button>
+                <button id="toggleSolarSystem">🌍 Show Solar System Labels</button>
+            </div>
         
         <div class="info-panel" style="margin-top: 10px; padding: 8px; font-size: 11px;">
             <div style="color: #4dd0e1; font-weight: bold; margin-bottom: 8px;">🎮 CONTROLS:</div>
             
             <div style="color: #90a4ae; font-size: 10px; margin-bottom: 8px;">
-                <div style="margin-bottom: 4px;"><span style="color: #ffeb3b;">DRAG</span> → Look Around</div>
+                <div style="margin-bottom: 4px;"><span style="color: #ffeb3b;">CLICK Star</span> → Navigate to Star</div>
+                <div style="margin-bottom: 4px;"><span style="color: #ffeb3b;">CLICK Label</span> → Navigate to Label</div>
+                <div style="margin-bottom: 4px;"><span style="color: #ffeb3b;">DRAG</span> → Look Around (Smooth)</div>
                 <div style="margin-bottom: 4px;"><span style="color: #ffeb3b;">SCROLL</span> → Zoom</div>
                 <div style="margin-bottom: 4px;"><span style="color: #ffeb3b;">WASD</span> → Fly Forward/Back/Left/Right</div>
                 <div style="margin-bottom: 4px;"><span style="color: #ffeb3b;">Q/E</span> → Fly Down/Up</div>
                 <div style="margin-bottom: 4px;"><span style="color: #ffeb3b;">SPACE+W/S</span> → Fly Up/Down</div>
+                <div style="margin-bottom: 4px;"><span style="color: #ff9800;">SHIFT</span> → Speed Boost (3x)</div>
             </div>
         </div>
         
@@ -184,7 +233,8 @@
                 <span class="info-value" id="magnitude">-</span>
             </div>
         </div>
-    </div>
+        </div> <!-- Close hud-content -->
+    </div> <!-- Close hud -->
     
     <!-- Three.js library -->
     <script src="three.min.js"></script>

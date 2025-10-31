@@ -16,7 +16,16 @@ class CosmicWebViewer {
     this.rotationX = 0;
     this.rotationY = 0;
     this.keyState = {}; // Track keys for free-flight movement
-    this.moveSpeed = 500; // Movement speed units per second
+    this.moveSpeed = 250; // Movement speed units per second (reduced from 500)
+
+    // Smooth motion controls
+    this.currentVelocity = new THREE.Vector3(0, 0, 0); // Current movement velocity
+    this.targetVelocity = new THREE.Vector3(0, 0, 0); // Target velocity based on input
+    this.acceleration = 750; // How fast we accelerate (units/s²) - also halved
+    this.deceleration = 1250; // How fast we slow down (units/s²) - also halved
+    this.rotationSmoothing = 0.15; // Lower = smoother but slower (0.1-0.3)
+    this.targetRotationX = 0;
+    this.targetRotationY = 0;
 
     // Timing for animation
     this.lastTime = performance.now();
@@ -33,6 +42,12 @@ class CosmicWebViewer {
     this.labelContainer = null;
     this.famousStars = null;
     this.approachDistance = 50; // Show labels within 50 parsecs
+    this.showStarLabels = true; // Toggle for star labels
+
+    // Solar system
+    this.solarSystemData = null;
+    this.showSolarSystemLabels = false; // Toggle for solar system LABELS only
+    this.solarSystemPoints = null;
 
     // Live API integration
     this.apiUrl = "http://localhost:5000";
@@ -74,6 +89,9 @@ class CosmicWebViewer {
 
     // Load famous star names
     await this.loadFamousStars();
+
+    // Load solar system data
+    await this.loadSolarSystem();
 
     // Load 20K star catalog with real 3D positions
     await this.loadBrightCatalog();
@@ -123,6 +141,9 @@ class CosmicWebViewer {
       // Render the full sky
       this.createGalaxyPoints();
 
+      // Create solar system objects
+      this.createSolarSystemPoints();
+
       this.updateStatus(
         `Viewing ${this.loadedStarCount} stars from Gaia DR3 (TRUE 3D with real distances)`
       );
@@ -143,6 +164,12 @@ class CosmicWebViewer {
     // Start at origin looking along +X axis - we're inside the galaxy now!
     this.camera.position.set(0, 0, 0);
     this.camera.lookAt(100, 0, 0);
+
+    // Initialize rotation values from camera's initial orientation
+    this.rotationX = this.camera.rotation.x;
+    this.rotationY = this.camera.rotation.y;
+    this.targetRotationX = this.rotationX;
+    this.targetRotationY = this.rotationY;
   }
 
   setupRenderer() {
@@ -158,14 +185,30 @@ class CosmicWebViewer {
   setupControls() {
     const canvas = this.renderer.domElement;
 
+    // Track mouse state for click detection
+    let mouseDownTime = 0;
+    let mouseDownPos = { x: 0, y: 0 };
+
     canvas.addEventListener("mousedown", (e) => {
       this.isMouseDown = true;
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
+      mouseDownTime = Date.now();
+      mouseDownPos = { x: e.clientX, y: e.clientY };
       canvas.style.cursor = "grabbing";
     });
 
-    canvas.addEventListener("mouseup", () => {
+    canvas.addEventListener("mouseup", (e) => {
+      const clickDuration = Date.now() - mouseDownTime;
+      const mouseMoved =
+        Math.abs(e.clientX - mouseDownPos.x) > 5 ||
+        Math.abs(e.clientY - mouseDownPos.y) > 5;
+
+      // If mouse didn't move much and click was quick, it's a click (not a drag)
+      if (clickDuration < 200 && !mouseMoved) {
+        this.handleStarClick(e);
+      }
+
       this.isMouseDown = false;
       canvas.style.cursor = "grab";
     });
@@ -176,26 +219,15 @@ class CosmicWebViewer {
       const deltaX = e.clientX - this.mouseX;
       const deltaY = e.clientY - this.mouseY;
 
-      // Free-look camera rotation (rotate the camera itself, not position)
+      // Accumulate target rotation (smooth)
       const rotateSpeed = 0.002;
+      this.targetRotationX += -deltaY * rotateSpeed;
+      this.targetRotationY += -deltaX * rotateSpeed;
 
-      // Horizontal rotation (yaw) - rotate around world Y axis
-      const yawAngle = -deltaX * rotateSpeed;
-      const yawQuat = new THREE.Quaternion();
-      yawQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawAngle);
-      this.camera.quaternion.multiplyQuaternions(
-        yawQuat,
-        this.camera.quaternion
-      );
-
-      // Vertical rotation (pitch) - rotate around camera's local X axis
-      const pitchAngle = -deltaY * rotateSpeed;
-      const pitchQuat = new THREE.Quaternion();
-      const xAxis = new THREE.Vector3(1, 0, 0);
-      pitchQuat.setFromAxisAngle(xAxis, pitchAngle);
-      this.camera.quaternion.multiplyQuaternions(
-        this.camera.quaternion,
-        pitchQuat
+      // Clamp pitch to prevent camera flipping
+      this.targetRotationX = Math.max(
+        -Math.PI / 2,
+        Math.min(Math.PI / 2, this.targetRotationX)
       );
 
       // Normalize to prevent drift
@@ -238,8 +270,29 @@ class CosmicWebViewer {
     });
   }
 
-  // Update keyboard movement (free-flight WASD controls)
+  // Smooth camera rotation with lerp
+  updateSmoothRotation() {
+    // Smoothly interpolate current rotation toward target
+    this.rotationX +=
+      (this.targetRotationX - this.rotationX) * this.rotationSmoothing;
+    this.rotationY +=
+      (this.targetRotationY - this.rotationY) * this.rotationSmoothing;
+
+    // Apply rotation to camera using Euler angles
+    this.camera.rotation.order = "YXZ"; // Yaw-Pitch-Roll order
+    this.camera.rotation.y = this.rotationY;
+    this.camera.rotation.x = this.rotationX;
+  }
+
+  // Update keyboard movement (free-flight WASD controls with smooth acceleration)
   updateKeyboardControls(delta) {
+    // Don't apply keyboard controls during camera animation
+    if (this.isAnimating) {
+      this.currentVelocity.set(0, 0, 0);
+      this.targetVelocity.set(0, 0, 0);
+      return;
+    }
+
     // Get camera direction vectors
     const forward = new THREE.Vector3();
     this.camera.getWorldDirection(forward);
@@ -248,45 +301,84 @@ class CosmicWebViewer {
       .normalize();
     const up = new THREE.Vector3(0, 1, 0);
 
-    const velocity = this.moveSpeed * delta;
+    // Calculate target velocity based on key inputs
+    this.targetVelocity.set(0, 0, 0);
     const isSpacePressed = this.keyState["Space"];
+
+    // Speed boost with Shift key (3x faster)
+    const speedMultiplier =
+      this.keyState["ShiftLeft"] || this.keyState["ShiftRight"] ? 3.0 : 1.0;
+    const currentMoveSpeed = this.moveSpeed * speedMultiplier;
 
     // WASD movement with spacebar modifiers
     if (this.keyState["KeyW"]) {
       if (isSpacePressed) {
         // Space + W = Move UP (vertical)
-        this.camera.position.add(up.clone().multiplyScalar(velocity));
+        this.targetVelocity.add(up.clone().multiplyScalar(currentMoveSpeed));
       } else {
         // W alone = Move FORWARD
-        this.camera.position.add(forward.clone().multiplyScalar(velocity));
+        this.targetVelocity.add(
+          forward.clone().multiplyScalar(currentMoveSpeed)
+        );
       }
     }
 
     if (this.keyState["KeyS"]) {
       if (isSpacePressed) {
         // Space + S = Move DOWN (vertical)
-        this.camera.position.add(up.clone().multiplyScalar(-velocity));
+        this.targetVelocity.add(up.clone().multiplyScalar(-currentMoveSpeed));
       } else {
         // S alone = Move BACKWARD
-        this.camera.position.add(forward.clone().multiplyScalar(-velocity));
+        this.targetVelocity.add(
+          forward.clone().multiplyScalar(-currentMoveSpeed)
+        );
       }
     }
 
-    // A/D for strafing left/right (unchanged)
+    // A/D for strafing left/right
     if (this.keyState["KeyA"]) {
-      this.camera.position.add(right.clone().multiplyScalar(-velocity));
+      this.targetVelocity.add(right.clone().multiplyScalar(-currentMoveSpeed));
     }
     if (this.keyState["KeyD"]) {
-      this.camera.position.add(right.clone().multiplyScalar(velocity));
+      this.targetVelocity.add(right.clone().multiplyScalar(currentMoveSpeed));
     }
 
     // Q/E also work for vertical movement
     if (this.keyState["KeyQ"]) {
-      this.camera.position.add(up.clone().multiplyScalar(-velocity));
+      this.targetVelocity.add(up.clone().multiplyScalar(-currentMoveSpeed));
     }
     if (this.keyState["KeyE"]) {
-      this.camera.position.add(up.clone().multiplyScalar(velocity));
+      this.targetVelocity.add(up.clone().multiplyScalar(currentMoveSpeed));
     }
+
+    // Smooth acceleration/deceleration toward target velocity
+    const targetSpeed = this.targetVelocity.length();
+    const currentSpeed = this.currentVelocity.length();
+
+    if (targetSpeed > 0) {
+      // Accelerating - smoothly increase speed toward target
+      const accelRate = this.acceleration * delta;
+      this.currentVelocity.lerp(
+        this.targetVelocity,
+        Math.min(accelRate / this.moveSpeed, 1.0)
+      );
+    } else {
+      // Decelerating - smoothly slow down with inertia
+      const decelRate = this.deceleration * delta;
+      const speedReduction = Math.min(decelRate, currentSpeed);
+      if (currentSpeed > 0.01) {
+        this.currentVelocity.multiplyScalar(
+          (currentSpeed - speedReduction) / currentSpeed
+        );
+      } else {
+        this.currentVelocity.set(0, 0, 0);
+      }
+    }
+
+    // Apply velocity to camera position
+    this.camera.position.add(
+      this.currentVelocity.clone().multiplyScalar(delta)
+    );
   }
 
   // Convert 3D position to celestial coordinates (RA/Dec)
@@ -810,6 +902,9 @@ class CosmicWebViewer {
       this.starMaterial.uniforms.time.value = now / 1000.0; // Time in seconds
     }
 
+    // Update smooth camera rotation
+    this.updateSmoothRotation();
+
     // Update keyboard controls (free-flight movement)
     this.updateKeyboardControls(delta);
 
@@ -926,6 +1021,271 @@ class CosmicWebViewer {
     );
   }
 
+  toggleStarLabels() {
+    this.showStarLabels = !this.showStarLabels;
+    const btn = document.getElementById("toggleStarLabels");
+    if (btn) {
+      btn.textContent = this.showStarLabels
+        ? "⭐ Hide Legendary Stars"
+        : "⭐ Show Legendary Stars";
+    }
+
+    // Only clear labels if BOTH star labels AND solar system labels are disabled
+    if (
+      !this.showStarLabels &&
+      !this.showSolarSystemLabels &&
+      this.labelContainer
+    ) {
+      this.labelContainer.innerHTML = "";
+    }
+
+    console.log(`Star labels ${this.showStarLabels ? "visible" : "hidden"}`);
+  }
+
+  async loadSolarSystem() {
+    try {
+      const module = await import("./solar-system.js");
+      this.solarSystemData = module.SOLAR_SYSTEM;
+      this.solarSystemLabelColors = module.SOLAR_SYSTEM_LABEL_COLORS;
+      this.solarSystemScale = module.SOLAR_SYSTEM_SCALE;
+      console.log(
+        `🌍 Loaded Solar System with ${
+          Object.keys(this.solarSystemData).length
+        } objects`
+      );
+    } catch (error) {
+      console.warn("Could not load solar system:", error);
+      this.solarSystemData = {};
+    }
+  }
+
+  toggleSolarSystem() {
+    this.showSolarSystemLabels = !this.showSolarSystemLabels;
+    const btn = document.getElementById("toggleSolarSystem");
+    if (btn) {
+      btn.textContent = this.showSolarSystemLabels
+        ? "🌍 Hide Solar System Labels"
+        : "🌍 Show Solar System Labels";
+    }
+
+    console.log(
+      `Solar System labels ${this.showSolarSystemLabels ? "visible" : "hidden"}`
+    );
+  }
+
+  // Click-to-navigate: find and fly to clicked star/planet
+  handleStarClick(event) {
+    // Create raycaster for mouse picking
+    const mouse = new THREE.Vector2();
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.params.Points.threshold = 2.0; // Larger detection radius for easier clicking
+    raycaster.setFromCamera(mouse, this.camera);
+
+    // Check both star points and solar system points
+    const objects = [this.points];
+    if (this.solarSystemPoints) {
+      objects.push(this.solarSystemPoints);
+    }
+
+    const intersects = raycaster.intersectObjects(objects, true);
+
+    if (intersects.length > 0) {
+      const intersection = intersects[0];
+      const clickedIndex = intersection.index;
+
+      // Check if it's a solar system object
+      if (intersection.object === this.solarSystemPoints) {
+        const solarObjects = Object.values(this.solarSystemData);
+        const solarObj = solarObjects[clickedIndex];
+
+        if (solarObj) {
+          const targetPos = new THREE.Vector3(
+            solarObj.x * this.solarSystemScale,
+            solarObj.y * this.solarSystemScale,
+            solarObj.z * this.solarSystemScale
+          );
+
+          console.log(
+            `🎯 Navigating to ${solarObj.name} at (${targetPos.x.toFixed(
+              1
+            )}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)}) pc`
+          );
+
+          // Fly towards the planet (stop 1 parsec away)
+          const direction = targetPos
+            .clone()
+            .sub(this.camera.position)
+            .normalize();
+          const distance = this.camera.position.distanceTo(targetPos);
+          const flyDistance = Math.max(distance - 1, 0); // Stop 1pc away
+
+          const destination = this.camera.position
+            .clone()
+            .add(direction.multiplyScalar(flyDistance));
+          this.animateCameraTo(destination, 1500);
+        }
+      } else {
+        // It's a regular star
+        const star = this.galaxyData[clickedIndex];
+
+        if (star) {
+          const targetPos = new THREE.Vector3(star.x, star.y, star.z);
+          const starInfo = this.famousStars
+            ? this.famousStars[star.source_id]
+            : null;
+          const starName = starInfo
+            ? starInfo.name
+            : `Gaia ${star.source_id.toString().slice(-6)}`;
+
+          console.log(
+            `🎯 Navigating to ${starName} at (${star.x.toFixed(
+              1
+            )}, ${star.y.toFixed(1)}, ${star.z.toFixed(1)}) pc`
+          );
+
+          // Fly towards the star (stop 10 parsecs away for better viewing)
+          const direction = targetPos
+            .clone()
+            .sub(this.camera.position)
+            .normalize();
+          const distance = this.camera.position.distanceTo(targetPos);
+          const flyDistance = Math.max(distance - 10, 0); // Stop 10pc away
+
+          const destination = this.camera.position
+            .clone()
+            .add(direction.multiplyScalar(flyDistance));
+          this.animateCameraTo(destination, 1500);
+        }
+      }
+    }
+  }
+
+  // Smooth camera animation to target position
+  animateCameraTo(targetPos, duration = 1000) {
+    const startPos = this.camera.position.clone();
+    const startTime = Date.now();
+
+    // Disable keyboard controls during animation to prevent elastic effect
+    this.isAnimating = true;
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Ease-out cubic for smooth deceleration
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      this.camera.position.lerpVectors(startPos, targetPos, eased);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        // Re-enable keyboard controls after animation
+        this.isAnimating = false;
+      }
+    };
+
+    animate();
+  }
+
+  createSolarSystemPoints() {
+    if (!this.solarSystemData || Object.keys(this.solarSystemData).length === 0)
+      return;
+
+    const objects = Object.values(this.solarSystemData);
+    const geometry = new THREE.BufferGeometry();
+
+    const positions = new Float32Array(objects.length * 3);
+    const colors = new Float32Array(objects.length * 3);
+    const sizes = new Float32Array(objects.length);
+
+    objects.forEach((obj, i) => {
+      const i3 = i * 3;
+      // Scale up positions so they're visible (planets are TINY compared to stellar distances)
+      positions[i3] = obj.x * this.solarSystemScale;
+      positions[i3 + 1] = obj.y * this.solarSystemScale;
+      positions[i3 + 2] = obj.z * this.solarSystemScale;
+
+      colors[i3] = obj.color[0];
+      colors[i3 + 1] = obj.color[1];
+      colors[i3 + 2] = obj.color[2];
+
+      sizes[i] = obj.size;
+    });
+
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+
+    // Use the SAME star texture - works perfectly!
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+
+    // Same glow as stars
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, "rgba(255,255,255,1.0)");
+    gradient.addColorStop(0.1, "rgba(255,255,255,0.9)");
+    gradient.addColorStop(0.25, "rgba(255,255,255,0.6)");
+    gradient.addColorStop(0.5, "rgba(255,255,255,0.3)");
+    gradient.addColorStop(0.75, "rgba(255,255,255,0.1)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 128, 128);
+
+    const texture = new THREE.CanvasTexture(canvas);
+
+    // SIMPLE shader - just like stars but no twinkling
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        pointTexture: { value: texture },
+      },
+      vertexShader: `
+        attribute float size;
+        attribute vec3 color;
+        varying vec3 vColor;
+        
+        void main() {
+          vColor = color;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          // Same scale as stars
+          gl_PointSize = size * (300.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D pointTexture;
+        varying vec3 vColor;
+        
+        void main() {
+          vec4 tex = texture2D(pointTexture, gl_PointCoord);
+          gl_FragColor = vec4(vColor, 1.0) * tex;
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    this.solarSystemPoints = new THREE.Points(geometry, material);
+    this.solarSystemPoints.visible = true; // ALWAYS visible
+    this.scene.add(this.solarSystemPoints);
+
+    console.log(
+      `Solar System created with ${objects.length} objects at scale ${this.solarSystemScale}x`
+    );
+    console.log(
+      `Earth position: (${objects[3].x * this.solarSystemScale}, ${
+        objects[3].y * this.solarSystemScale
+      }, ${objects[3].z * this.solarSystemScale}) parsecs`
+    );
+  }
+
   // === STAR LABEL SYSTEM ===
 
   setupLabelContainer() {
@@ -967,28 +1327,69 @@ class CosmicWebViewer {
     const cameraPos = this.camera.position;
     const visibleLabels = [];
 
-    // Check each star for labeling
-    for (const star of this.galaxyData) {
-      const starInfo = this.famousStars[star.source_id];
-      if (!starInfo) continue;
+    // Add STAR labels if star labels are enabled
+    if (this.showStarLabels) {
+      // Check each star for labeling
+      for (const star of this.galaxyData) {
+        const starInfo = this.famousStars[star.source_id];
+        if (!starInfo) continue;
 
-      const starPos = star.pos || new THREE.Vector3(star.x, star.y, star.z);
-      const distance = cameraPos.distanceTo(starPos);
+        const starPos = star.pos || new THREE.Vector3(star.x, star.y, star.z);
+        const distance = cameraPos.distanceTo(starPos);
 
-      // Show label if: always show flag OR within approach distance
-      const shouldShow =
-        starInfo.alwaysShow || distance < this.approachDistance;
+        // Show label if: always show flag OR within approach distance
+        const shouldShow =
+          starInfo.alwaysShow || distance < this.approachDistance;
 
-      if (shouldShow) {
-        // Project 3D position to 2D screen
-        const screenPos = starPos.clone();
+        if (shouldShow) {
+          // Project 3D position to 2D screen
+          const screenPos = starPos.clone();
+          screenPos.project(this.camera);
+
+          // Convert to screen coordinates (round to prevent jitter)
+          const x = Math.round((screenPos.x * 0.5 + 0.5) * window.innerWidth);
+          const y = Math.round((-screenPos.y * 0.5 + 0.5) * window.innerHeight);
+
+          // Check if in front of camera and on screen
+          if (
+            screenPos.z < 1 &&
+            x > 0 &&
+            x < window.innerWidth &&
+            y > 0 &&
+            y < window.innerHeight
+          ) {
+            visibleLabels.push({
+              name: starInfo.name,
+              type: starInfo.type,
+              x,
+              y,
+              distance: distance.toFixed(1),
+              magnitude: star.magnitude.toFixed(1),
+              alwaysShow: starInfo.alwaysShow,
+              position: starPos, // Store position for click navigation
+            });
+          }
+        }
+      }
+    }
+
+    // Add SOLAR SYSTEM labels if solar system labels are enabled (INDEPENDENT!)
+    if (this.showSolarSystemLabels && this.solarSystemData) {
+      Object.values(this.solarSystemData).forEach((obj) => {
+        const solarPos = new THREE.Vector3(
+          obj.x * this.solarSystemScale,
+          obj.y * this.solarSystemScale,
+          obj.z * this.solarSystemScale
+        );
+        const distance = cameraPos.distanceTo(solarPos);
+
+        // Project to screen
+        const screenPos = solarPos.clone();
         screenPos.project(this.camera);
 
-        // Convert to screen coordinates
-        const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+        const x = Math.round((screenPos.x * 0.5 + 0.5) * window.innerWidth);
+        const y = Math.round((-screenPos.y * 0.5 + 0.5) * window.innerHeight);
 
-        // Check if in front of camera and on screen
         if (
           screenPos.z < 1 &&
           x > 0 &&
@@ -997,22 +1398,36 @@ class CosmicWebViewer {
           y < window.innerHeight
         ) {
           visibleLabels.push({
-            name: starInfo.name,
-            type: starInfo.type,
+            name: obj.name,
+            type: "solar-system",
             x,
             y,
-            distance: distance.toFixed(1),
-            magnitude: star.magnitude.toFixed(1),
-            alwaysShow: starInfo.alwaysShow,
+            distance: `${((distance / this.solarSystemScale) * 206265).toFixed(
+              0
+            )} AU`, // Convert to AU
+            magnitude: obj.magnitude.toFixed(1),
+            alwaysShow: true,
+            position: solarPos, // Store position for click navigation
           });
         }
-      }
+      });
     }
 
     // Create label elements
     for (const label of visibleLabels) {
       const labelEl = document.createElement("div");
-      const color = this.labelColors[label.type] || "#ffffff";
+      let color;
+      if (label.type === "solar-system") {
+        // Use specific color for solar system object type
+        const solarObj = Object.values(this.solarSystemData).find(
+          (o) => o.name === label.name
+        );
+        color = solarObj
+          ? this.solarSystemLabelColors[solarObj.type]
+          : "#00d4ff";
+      } else {
+        color = this.labelColors[label.type] || "#ffffff";
+      }
       const fontSize = label.alwaysShow ? "14px" : "12px";
       const fontWeight = label.alwaysShow ? "bold" : "normal";
 
@@ -1035,12 +1450,49 @@ class CosmicWebViewer {
         border-radius: 4px;
         border: 1px solid ${color}66;
         backdrop-filter: blur(4px);
+        cursor: pointer;
+        transition: all 0.2s;
       `;
+
+      // Add hover effect
+      labelEl.addEventListener("mouseenter", () => {
+        labelEl.style.background = "rgba(0, 0, 0, 0.8)";
+        labelEl.style.borderColor = color;
+        labelEl.style.transform = "translate(-50%, -100%) scale(1.05)";
+      });
+
+      labelEl.addEventListener("mouseleave", () => {
+        labelEl.style.background = "rgba(0, 0, 0, 0.5)";
+        labelEl.style.borderColor = `${color}66`;
+        labelEl.style.transform = "translate(-50%, -100%) scale(1)";
+      });
+
+      // Make label clickable - navigate to star/planet
+      labelEl.addEventListener("click", () => {
+        if (label.position) {
+          const direction = label.position
+            .clone()
+            .sub(this.camera.position)
+            .normalize();
+          const distance = this.camera.position.distanceTo(label.position);
+          const stopDistance = label.type === "solar-system" ? 1 : 10; // Stop closer for planets
+          const flyDistance = Math.max(distance - stopDistance, 0);
+
+          const destination = this.camera.position
+            .clone()
+            .add(direction.multiplyScalar(flyDistance));
+          this.animateCameraTo(destination, 1500);
+
+          console.log(`🎯 Navigating to ${label.name} (clicked on label)`);
+        }
+      });
 
       labelEl.innerHTML = `
         <div style="line-height: 1.3;">
           <div style="font-size: ${fontSize};">${label.name}</div>
-          <div style="font-size: 10px; opacity: 0.8;">${label.distance}pc • mag ${label.magnitude}</div>
+          <div style="font-size: 10px; opacity: 0.8;">${label.distance} ${
+        label.type === "solar-system" ? "" : "• mag " + label.magnitude
+      }</div>
         </div>
       `;
 
@@ -1053,11 +1505,52 @@ class CosmicWebViewer {
 window.addEventListener("DOMContentLoaded", () => {
   const viewer = new CosmicWebViewer();
 
+  // Wire up reset camera button
+  const resetBtn = document.getElementById("resetCamera");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      viewer.camera.position.set(0, 0, 0);
+      viewer.camera.rotation.set(0, 0, 0);
+      viewer.rotationX = 0;
+      viewer.rotationY = 0;
+      viewer.targetRotationX = 0;
+      viewer.targetRotationY = 0;
+      viewer.currentVelocity.set(0, 0, 0);
+      viewer.camera.lookAt(100, 0, 0);
+      console.log("🏠 Camera reset to origin");
+    });
+  }
+
   // Wire up constellation toggle button
   const constellationBtn = document.getElementById("toggleConstellations");
   if (constellationBtn) {
     constellationBtn.addEventListener("click", () =>
       viewer.toggleConstellations()
     );
+  }
+
+  // Wire up star labels toggle button
+  const starLabelsBtn = document.getElementById("toggleStarLabels");
+  if (starLabelsBtn) {
+    starLabelsBtn.addEventListener("click", () => viewer.toggleStarLabels());
+  }
+
+  // Wire up solar system toggle button
+  const solarSystemBtn = document.getElementById("toggleSolarSystem");
+  if (solarSystemBtn) {
+    solarSystemBtn.addEventListener("click", () => viewer.toggleSolarSystem());
+  }
+
+  // Wire up HUD minimize button
+  const minimizeBtn = document.getElementById("minimizeBtn");
+  const hud = document.getElementById("hud");
+  if (minimizeBtn && hud) {
+    minimizeBtn.addEventListener("click", () => {
+      hud.classList.toggle("minimized");
+      minimizeBtn.textContent = hud.classList.contains("minimized") ? "+" : "−";
+      minimizeBtn.title = hud.classList.contains("minimized")
+        ? "Maximize HUD"
+        : "Minimize HUD";
+    });
   }
 });
