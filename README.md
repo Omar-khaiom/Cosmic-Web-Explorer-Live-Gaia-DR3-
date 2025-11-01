@@ -23,7 +23,7 @@ This is a trimmed, production-friendly setup with minimal dependencies and a sim
 
 ## Quick Start (recommended)
 
-Run the helper script that starts both servers (backend on 5000, frontend on 8000):
+Run the helper script that starts both servers (backend on 5000, frontend on 3000):
 
 ```powershell
 cd d:\space
@@ -32,7 +32,19 @@ cd d:\space
 
 Open the viewer:
 
-- http://localhost:8000/viewer/index.html
+- http://localhost:3000/viewer/index.html
+
+### Download local catalog (for ~20k bright stars)
+
+By default, if the local SQLite catalog is missing, the API falls back to a tiny JSON sample (~20 stars). To see the full bright layer (~20,000 stars, mag < 7), download and build the local catalog once:
+
+```powershell
+cd d:\space\backend
+pip install -r requirements.txt
+python scripts\download_gaia_catalog.py --mag-limit 7.0 --output d:\space\data\gaia_catalog.db
+```
+
+Then restart the backend. If you previously hit the bright-catalog endpoint, the result may be cached; restarting clears the in-memory cache. Alternatively, call with a slightly different limit (e.g., `mag_limit=7.01`).
 
 Windows quick start (one-click)
 
@@ -45,7 +57,7 @@ Steps:
 cd d:\space
 .\start_all.bat
 
-2. Open http://localhost:8000/viewer/index.html
+2. Open http://localhost:3000/viewer/index.html
 
 PowerShell gotcha & Troubleshooting
 
@@ -81,12 +93,12 @@ Frontend (static server):
 
 ```powershell
 cd d:\space
-python -m http.server 8000
+python -m http.server 3000
 ```
 
 Open the viewer:
 
-- http://localhost:8000/viewer/index.html
+- http://localhost:3000/viewer/index.html
 
 ## API
 
@@ -129,7 +141,7 @@ Response (fields abbreviated):
 ## Troubleshooting
 
 - Port in use: change ports in `start_all.ps1` or run uvicorn with a different `--port`.
-- CORS: backend allows http://localhost:8000 by default (see `backend/config.py`).
+-- CORS: backend allows http://localhost:3000 (and 8000) by default (see `backend/config.py`).
 - Gaia 500 errors: transient. The service auto-retries; try again or move slightly to trigger a new region.
 
 ## Project Structure
@@ -168,7 +180,7 @@ start_all.ps1 # if this fails, use the .bat launcher below or see Troubleshootin
 Opens:
 Backend: http://localhost:5000
 API Docs: http://localhost:5000/docs
-Viewer: http://localhost:8000/viewer/index.html
+Viewer: http://localhost:3000/viewer/index.html
 Manual start:
 
 Backend:
@@ -177,5 +189,5 @@ pip install -r requirements.txt
 python -m uvicorn app:app --host 0.0.0.0 --port 5000 --reload
 Frontend:
 cd d:\space
-python -m http.server 8000
-Open http://localhost:8000/viewer/index.html
+python -m http.server 3000
+Open http://localhost:3000/viewer/index.html

@@ -152,9 +152,9 @@ Skip MW integration for now
 
 cd d:\space\viewer
 
-### 🔥 Phase 2: Frontend Connection (NEXT)python -m http.server 8000
+### 🔥 Phase 2: Frontend Connection (NEXT)python -m http.server 3000
 
-- Replace CSV with API calls# Open http://localhost:8000 in browser
+-- Replace CSV with API calls# Open http://localhost:3000 in browser
 
 - Camera → RA/Dec conversion# Press H to see controls
 
@@ -308,7 +308,7 @@ d:\space\
 
 cd d:\space│   ├── main.js (857 lines - needs color mapping fix)
 
-python -m http.server 8000│   ├── index.html (working)
+python -m http.server 3000│   ├── index.html (working)
 
 ```│   └── three.min.js (library)
 
@@ -316,7 +316,7 @@ python -m http.server 8000│   ├── index.html (working)
 
 ### Access:│   ├── sdss_galaxies.csv (23,855 - working)
 
-- **Viewer:** http://localhost:8000/viewer/│   └── milky_way_stars.csv (96,850 - needs color fix)
+- **Viewer:** http://localhost:3000/viewer/│   └── milky_way_stars.csv (96,850 - needs color fix)
 
 - **API Docs:** http://localhost:5000/docs├── scripts/
 
@@ -392,7 +392,7 @@ python test_simple.py
 
          ┌──────────────────┐2. **Edit:** viewer/main.js (add spectral color mapping)
 
-         │  ESA Gaia DR3    │3. **Test:** http://localhost:8000
+         │  ESA Gaia DR3    │3. **Test:** http://localhost:3000
 
          │  1.8 Billion ⭐  │4. **See:** Beautiful Milky Way with spiral arms!
 
@@ -496,7 +496,7 @@ Add features without breaking existing code.- Color mapping needs spectral type�
 
 **Papers using Gaia DR3:** 5,000+ scientific publications  - **MW Data:** data/milky_way_stars.csv (96,850 stars)
 
-**Your project now uses:** Same data as professional astronomers- **Test Server:** `python -m http.server 8000` in `viewer/` folder
+**Your project now uses:** Same data as professional astronomers- **Test Server:** `python -m http.server 3000` in `viewer/` folder
 
 
 
@@ -604,7 +604,7 @@ A: 4x more stars + realistic spiral arms visible = more impressive visualization
 
 ```1. Run: `python -m http.server 8000` in viewer/
 
-backend/2. Open: http://localhost:8000
+backend/2. Open: http://localhost:3000
 
 ├── app.py                   (API server)3. Press: H to see controls
 

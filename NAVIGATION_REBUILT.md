@@ -88,10 +88,10 @@ python -m uvicorn app:app --host 0.0.0.0 --port 5000
 
 # Terminal 2
 cd d:\space
-python -m http.server 8000
+python -m http.server 3000
 ```
 
-Open: http://localhost:8000/viewer/index.html
+Open: http://localhost:3000/viewer/index.html
 
 ---
 

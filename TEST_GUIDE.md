@@ -15,12 +15,12 @@
 
 ```powershell
 # Should see: "Serving HTTP on..."
-# Terminal showing server on port 8000
+# Terminal showing server on port 3000
 ```
 
 ### 2. Open Browser Console
 
-1. Go to http://localhost:8000/viewer/
+1. Go to http://localhost:3000/viewer/
 2. Press **F12** to open Developer Tools
 3. Click **Console** tab
 4. Look for these messages:

@@ -97,7 +97,7 @@ backend/
 ✅ **Live Gaia DR3 Integration** - Real astronomical data from ESA
 ✅ **Intelligent Caching** - In-memory + SQLite with TTL
 ✅ **Async/Await** - High-performance concurrent queries
-✅ **CORS Enabled** - Frontend can connect from localhost:8000
+✅ **CORS Enabled** - Frontend can connect from localhost:3000 (also supports 8000 for backwards compatibility)
 ✅ **Retry Logic** - Auto-retry failed Gaia queries
 ✅ **Spatial Queries** - Cone search + frustum culling
 ✅ **Color Mapping** - BP-RP photometry → RGB colors

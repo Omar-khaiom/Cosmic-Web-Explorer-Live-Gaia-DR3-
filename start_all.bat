@@ -9,9 +9,9 @@ start "CosmicWeb Backend" cmd /k "cd /d "%SCRIPT_DIR%backend" && echo Running in
 
 timeout /t 1 >nul
 
-echo Launching frontend (static server on port 8000)...
-start "CosmicWeb Frontend" cmd /k "cd /d "%SCRIPT_DIR%" && echo Serving %%CD%% && python -m http.server 8000"
+echo Launching frontend (static server on port 3000)...
+start "CosmicWeb Frontend" cmd /k "cd /d "%SCRIPT_DIR%" && echo Serving %%CD%% && python -m http.server 3000"
 
-echo All windows launched. Open http://localhost:8000/viewer/index.html
+echo All windows launched. Open http://localhost:3000/viewer/index.html
 ENDLOCAL
 pause

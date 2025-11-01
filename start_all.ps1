@@ -35,8 +35,8 @@ catch {
 }
 
 # Start Frontend
-Write-Host "`nStarting Frontend Server (port 8000)..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd d:\space; python -m http.server 8000"
+Write-Host "`nStarting Frontend Server (port 3000)..." -ForegroundColor Cyan
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd d:\space; python -m http.server 3000"
 
 Start-Sleep -Seconds 2
 
@@ -50,7 +50,7 @@ Write-Host "http://localhost:5000" -ForegroundColor Cyan
 Write-Host "📚 API Docs:     " -NoNewline
 Write-Host "http://localhost:5000/docs" -ForegroundColor Cyan
 Write-Host "🌌 Viewer:       " -NoNewline
-Write-Host "http://localhost:8000/viewer/" -ForegroundColor Cyan
+Write-Host "http://localhost:3000/viewer/" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Press Ctrl+C in any terminal window to stop servers." -ForegroundColor Yellow
 Write-Host ""

@@ -3,6 +3,8 @@ Local Gaia Catalog Service
 Queries local SQLite database instead of remote TAP API
 """
 import sqlite3
+import json
+from math import radians, cos, sin
 from typing import List, Dict, Optional
 from pathlib import Path
 import asyncio
@@ -16,11 +18,21 @@ class LocalCatalogService:
     """Service for querying local Gaia catalog SQLite database"""
     
     def __init__(self, db_path: str = "data/gaia_catalog.db"):
-        """Initialize with database path"""
-        self.db_path = Path(db_path)
+        """Initialize with database path. Resolve relative path to repo root."""
+        initial_path = Path(db_path)
+        resolved_path = initial_path
+        if not initial_path.is_absolute():
+            # Try relative to current working directory first
+            if not initial_path.exists():
+                # Then try resolving relative to repository root (two levels up from this file)
+                repo_root = Path(__file__).resolve().parents[2]
+                candidate = repo_root / initial_path
+                if candidate.exists():
+                    resolved_path = candidate
+        self.db_path = resolved_path
         if not self.db_path.exists():
             logger.warning(f"Catalog database not found: {self.db_path}")
-            logger.warning("Run: python scripts/download_gaia_catalog.py")
+            logger.warning("Run: python scripts/download_gaia_catalog.py --mag-limit 7.0 --output d:\\space\\data\\gaia_catalog.db")
         else:
             logger.info(f"Local catalog ready: {self.db_path}")
     
@@ -149,10 +161,82 @@ class LocalCatalogService:
     
     def _query_all_bright_stars_sync(self, mag_limit: float) -> List[Dict]:
         """Get all bright stars from catalog"""
-        
+        # If local SQLite DB is not present, fall back to the packaged bright_catalog.json
         if not self.db_path.exists():
-            logger.error("Catalog database not found")
-            return []
+            logger.error("Catalog database not found, falling back to data/bright_catalog.json if available")
+            try:
+                # Resolve bright_catalog.json relative to the repository root so
+                # the backend can be started from the `backend/` folder and still
+                # find the top-level `data/` directory.
+                repo_root = Path(__file__).resolve().parents[2]
+                json_path = repo_root / "data" / "bright_catalog.json"
+                if not json_path.exists():
+                    logger.error(f"Fallback bright catalog not found: {json_path}")
+                    return []
+
+                with json_path.open("r", encoding="utf-8") as fh:
+                    items = json.load(fh)
+
+                stars = []
+                for item in items:
+                    mag = item.get("phot_g_mean_mag") or item.get("magnitude")
+                    if mag is None:
+                        continue
+                    if mag >= mag_limit:
+                        continue
+
+                    ra = float(item.get("ra", 0.0))
+                    dec = float(item.get("dec", 0.0))
+
+                    # distance: prefer distance_pc, otherwise distance_ly -> convert
+                    distance_pc = item.get("distance_pc")
+                    if distance_pc is None:
+                        distance_ly = item.get("distance_ly")
+                        if distance_ly is not None:
+                            # 1 parsec ~= 3.26156 light years
+                            distance_pc = float(distance_ly) / 3.26156
+                        else:
+                            distance_pc = None
+
+                    # Compute Cartesian coordinates if we have a distance
+                    x = y = z = 0.0
+                    if distance_pc:
+                        ra_rad = radians(ra)
+                        dec_rad = radians(dec)
+                        r = float(distance_pc)
+                        x = r * cos(dec_rad) * cos(ra_rad)
+                        y = r * cos(dec_rad) * sin(ra_rad)
+                        z = r * sin(dec_rad)
+
+                    bp_rp = item.get("bp_rp") if item.get("bp_rp") is not None else 0.0
+                    rgb = self._bp_rp_to_rgb(bp_rp)
+
+                    star = {
+                        'source_id': str(item.get('source_id', '')),
+                        'ra': ra,
+                        'dec': dec,
+                        'x': float(x),
+                        'y': float(y),
+                        'z': float(z),
+                        'parallax': item.get('parallax_mas') or item.get('parallax'),
+                        'distance_pc': float(distance_pc) if distance_pc else None,
+                        'magnitude': float(mag),
+                        'color_bp_rp': bp_rp,
+                        'r': rgb[0],
+                        'g': rgb[1],
+                        'b': rgb[2],
+                        'pm_ra': float(item.get('pmra_mas_yr') or item.get('pmra') or 0.0),
+                        'pm_dec': float(item.get('pmdec_mas_yr') or item.get('pmdec') or 0.0),
+                        'radial_velocity': item.get('radial_velocity'),
+                        'temperature': item.get('temperature')
+                    }
+                    stars.append(star)
+
+                logger.success(f"Retrieved {len(stars)} bright stars from fallback JSON (mag < {mag_limit})")
+                return stars
+            except Exception as e:
+                logger.error(f"Fallback bright catalog load failed: {e}")
+                return []
         
         try:
             conn = sqlite3.connect(self.db_path)
