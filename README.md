@@ -7,21 +7,22 @@ Explore the Milky Way with real, live data from ESA Gaia DR3. This repo contains
 
 ## Features
 
-- **Live Gaia DR3 Data**: Real star positions, magnitudes, and colors from ESA's Gaia mission
-- **Planetarium Mode**: View stars on a celestial sphere with recognizable patterns
-- **Constellation Overlays**: Toggle 10 major constellations (Orion, Ursa Major, Cassiopeia, etc.) with lines
-- **Bright Star Labels**: Named stars (Sirius, Betelgeuse, Vega, Polaris, etc.)
-- **Magnitude-Based Rendering**: Bright stars appear larger and more prominent
+- **Live Gaia DR3 Data**: Real star positions, magnitudes, and colors from ESA's Gaia mission (~20,000 bright stars)
+- **Full-Sky 3D**: Explore the entire celestial sphere with true 3D distances from Earth (0.1 to 100,000+ parsecs)
+- **Constellation Overlays**: Toggle 10 major constellations with overlay patterns (Orion, Ursa Major, Cassiopeia, etc.)
+- **Bright Star Labels**: Named stars visible on approach (Sirius, Betelgeuse, Vega, Polaris, Rigel, Arcturus, etc.)
+- **Magnitude-Based Rendering**: Bright stars appear larger and more prominent; colors represent temperature
+- **Frame Views**: Switch between Equatorial (EQ), Ecliptic (EP), and Galactic (GAL) coordinate frames with plane rings
 - **Smart Caching**: First queries take 1-3s; cached repeats are 5-20ms
 
 This is a trimmed, production-friendly setup with minimal dependencies and a simple start flow.
 
 ## Requirements
 
-- Windows with PowerShell
 - Python 3.10+ (3.12 OK)
+- Windows (PowerShell 5+), Linux, or macOS
 
-## Quick Start (recommended)
+## Quick Start (Windows PowerShell)
 
 Run the helper script that starts both servers (backend on 5000, frontend on 3000):
 
@@ -31,20 +32,90 @@ cd d:\space
 ```
 
 Open the viewer:
-
 - http://localhost:3000/viewer/index.html
+
+## Quick Start (Linux / macOS)
+
+Run the shell script:
+
+```bash
+cd ~/space  # or wherever you cloned the repo
+chmod +x start_all.sh
+./start_all.sh
+```
+
+Open the viewer:
+- http://localhost:3000/viewer/index.html
+
+## About This Sky View
+
+When you launch the app, you're viewing the entire celestial sphere from Earth, starting centered on the **Vernal Equinox** (RA 0°, Dec 0°) — the direction where the Sun appears on the spring equinox.
+
+### Default View Region
+
+| Coordinate | Value |
+|------------|-------|
+| **Right Ascension (RA)** | 0° (Vernal Equinox direction) |
+| **Declination (Dec)** | 0° (Celestial Equator) |
+| **Distance Range** | 0.1 - 100,000+ parsecs (~326 light-years to billions) |
+| **Star Count** | ~20,000 (magnitude < 7.0 = naked-eye visible) |
+| **Coordinate System** | Equatorial (ICRS) — IAU standard |
+
+### Nearby Constellations & Regions
+
+From the default RA=0°/Dec=0° starting point, nearby celestial regions include:
+
+| Region | RA Range | Dec Range | Key Stars | Distance |
+|--------|----------|-----------|-----------|----------|
+| **Cassiopeia** | 2.3°-28.6° | +59° to +63° | Scheherazade (γ Cas) | ~150 ly |
+| **Andromeda Galaxy (M31)** | 0.7°-2.7° | +25° to +42° | Alpheratz (α And) | 2.5 M ly |
+| **Perseus** | 2°-4° | +31° to +58° | Algol (β Per) | ~93 ly |
+| **Pisces** | 23°-3° | -3° to +33° | Alrescha (α Psc) | ~100 ly |
+| **Cetus** | 0°-3° | -24° to +3° | Diphda (β Cet) | ~96 ly |
+| **Triangulum** | 1°-3° | +25° to +35° | Mothallah (α Tri) | ~60 ly |
+| **Pegasus** | 22°-0° | +7° to +35° | Markab (α Peg) | ~133 ly |
+
+### Sky Navigation
+
+**Keyboard & Mouse Controls:**
+- **WASD** — Navigate through space
+- **Mouse Drag** — Rotate view
+- **Shift** — Move slower (fine control)
+- **EQ/EP/GAL buttons** — Switch coordinate frames
+- **Search box** — Find stars by name
+- **Click a star** — Show details and navigate to it
+
+### Famous Stars Tour (Start with any constellation)
+
+The viewer includes guided waypoints to major bright and nearby stars:
+1. **Sirius** (RA 101.3°, Dec -16.7°) — Brightest visible star, 8.6 light-years
+2. **Betelgeuse** (RA 88.8°, Dec +7.4°) — Red supergiant in Orion, 430-600 light-years
+3. **Alpha Centauri (Rigil)** (RA 219.9°, Dec -60.8°) — Nearest star system, 4.37 light-years
+4. **Vega** (RA 279.2°, Dec +38.8°) — Brilliant blue star, 25 light-years
 
 ### Download local catalog (for ~20k bright stars)
 
 By default, if the local SQLite catalog is missing, the API falls back to a tiny JSON sample (~20 stars). To see the full bright layer (~20,000 stars, mag < 7), download and build the local catalog once:
 
+**Windows (PowerShell):**
 ```powershell
 cd d:\space\backend
 pip install -r requirements.txt
 python scripts\download_gaia_catalog.py --mag-limit 7.0 --output d:\space\data\gaia_catalog.db
 ```
 
-Then restart the backend. If you previously hit the bright-catalog endpoint, the result may be cached; restarting clears the in-memory cache. Alternatively, call with a slightly different limit (e.g., `mag_limit=7.01`).
+**Linux / macOS (Bash):**
+```bash
+cd ~/space/backend
+pip3 install -r requirements.txt
+python3 scripts/download_gaia_catalog.py --mag-limit 7.0 --output ~/space/data/gaia_catalog.db
+```
+
+Then restart the backend. If you previously hit the bright-catalog endpoint, the result may be cached; restarting clears the in-memory cache. Alternatively, call with a slightly different limit (e.g., `--mag-limit 7.01`).
+
+**Speed tips:**
+- For faster download, use `--mag-limit 6.5` (~9,000 bright stars only)
+- First download takes 2-5 minutes; subsequent restarts are instant (cached)
 
 Windows quick start (one-click)
 
@@ -99,6 +170,31 @@ python -m http.server 3000
 Open the viewer:
 
 - http://localhost:3000/viewer/index.html
+
+## Coordinate Systems Explained
+
+This app uses **three complementary coordinate frames**, all centered on Earth:
+
+### 1. **Equatorial (EQ)** — Standard Astronomy Frame
+- **RA (Right Ascension)**: 0°-360° (East along the celestial equator)
+- **Dec (Declination)**: -90° to +90° (North-South poles)
+- **Origin**: Vernal Equinox (RA 0°, Dec 0°) — direction to Spring sunrise point
+- **Use**: Standard for all star catalogs and Gaia DR3 data
+- **Example**: Sirius (RA 101.3°, Dec -16.7°)
+
+### 2. **Ecliptic (EP)** — Solar System Frame
+- **Ecliptic Longitude**: 0°-360° along the Sun's apparent path
+- **Ecliptic Latitude**: -90° to +90° above/below the Sun's path
+- **Use**: Tracking planets, solar system objects, and seasonal changes
+- **Note**: Tilted ~23.4° from celestial equator (Earth's axial tilt)
+
+### 3. **Galactic (GAL)** — Milky Way Frame
+- **Galactic Longitude**: 0°-360° around the galactic plane
+- **Galactic Latitude**: -90° to +90° perpendicular to galactic disk
+- **Use**: Studying the structure of our galaxy
+- **Center**: Sagittarius A* (black hole at galactic center)
+
+**Use the EQ/EP/GAL buttons to switch frames and see the plane overlay rotate!**
 
 ## API
 
