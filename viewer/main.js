@@ -275,14 +275,29 @@ class CosmicWebViewer {
   // Setup keyboard shortcuts listener
   setupKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
+      // Ignore if typing in input
+      if (e.target.matches('input, textarea')) return;
+      
       // ? or / to show help
-      if (e.key === '?' || (e.key === '/' && !e.target.matches('input, textarea'))) {
+      if (e.key === '?' || e.key === '/') {
         e.preventDefault();
         this.toggleHelpModal();
       }
       // Escape to close modals
       if (e.key === 'Escape') {
         this.closeHelpModal();
+      }
+      // C to toggle constellations
+      if (e.key === 'c' || e.key === 'C') {
+        this.toggleConstellations();
+      }
+      // L to toggle star labels
+      if (e.key === 'l' || e.key === 'L') {
+        this.toggleStarLabels();
+      }
+      // R to reset camera
+      if (e.key === 'r' || e.key === 'R') {
+        this.resetCamera();
       }
     });
   }
@@ -332,6 +347,9 @@ class CosmicWebViewer {
           </div>
           <div class="help-section">
             <h3>⌨️ Shortcuts</h3>
+            <div class="help-row"><kbd>C</kbd><span>Toggle constellations</span></div>
+            <div class="help-row"><kbd>L</kbd><span>Toggle star labels</span></div>
+            <div class="help-row"><kbd>R</kbd><span>Reset camera view</span></div>
             <div class="help-row"><kbd>?</kbd><span>Toggle this help</span></div>
             <div class="help-row"><kbd>Esc</kbd><span>Close panels</span></div>
           </div>
@@ -878,7 +896,8 @@ class CosmicWebViewer {
     }
 
     const linePositions = [];
-    const sphereRadius = 1000; // Render on a sphere at this radius
+    // Render on a celestial sphere - this will be attached to camera
+    const sphereRadius = 800;
 
     for (const constellation of this.constellations) {
       for (let i = 0; i < constellation.lines.length; i += 4) {
@@ -901,17 +920,56 @@ class CosmicWebViewer {
       new THREE.Float32BufferAttribute(linePositions, 3)
     );
 
+    // Brighter, more visible lines
     const material = new THREE.LineBasicMaterial({
-      color: 0xaaccff,
+      color: 0x66ccff,
       transparent: true,
-      opacity: 0.8,
-      linewidth: 2,
+      opacity: 0.6,
       depthTest: false, // Always render on top
+      depthWrite: false,
     });
 
     this.constellationLines = new THREE.LineSegments(geometry, material);
     this.scene.add(this.constellationLines);
     this.constellationLines.visible = this.showConstellations;
+    
+    console.log(`✨ Created constellation lines for ${this.constellations.length} constellations`);
+  }
+
+  // Look toward a constellation (points camera in that direction)
+  lookAtConstellation(name) {
+    const constellation = this.constellations.find(c => 
+      c.name.toLowerCase() === name.toLowerCase()
+    );
+    
+    if (!constellation || !constellation.lines.length) {
+      console.warn(`Constellation "${name}" not found`);
+      return;
+    }
+    
+    // Calculate center of constellation from its lines
+    let totalRA = 0, totalDec = 0, count = 0;
+    for (let i = 0; i < constellation.lines.length; i += 2) {
+      totalRA += constellation.lines[i];
+      totalDec += constellation.lines[i + 1];
+      count++;
+    }
+    const centerRA = totalRA / count;
+    const centerDec = totalDec / count;
+    
+    // Convert to look direction (at distance 100 from camera)
+    const lookTarget = this.equatorialToPosition(centerRA, centerDec, 100);
+    lookTarget.add(this.camera.position);
+    
+    // Smoothly look toward constellation
+    this.camera.lookAt(lookTarget);
+    
+    // Update rotation targets
+    this.targetRotationX = this.camera.rotation.x;
+    this.targetRotationY = this.camera.rotation.y;
+    
+    console.log(`👀 Looking at ${name} (RA: ${centerRA.toFixed(1)}°, Dec: ${centerDec.toFixed(1)}°)`);
+    this.updateStatus(`Looking at ${name}`);
   }
 
   // Load stars visible in current view
@@ -1359,6 +1417,11 @@ class CosmicWebViewer {
       }
     }
 
+    // Keep constellation lines centered on camera (sky dome effect)
+    if (this.constellationLines) {
+      this.constellationLines.position.copy(this.camera.position);
+    }
+
     // VIDEO GAME STYLE: Update navigation FIRST
     this.updateNavigation(delta);
 
@@ -1569,9 +1632,16 @@ class CosmicWebViewer {
     }
     const btn = document.getElementById("toggleConstellations");
     if (btn) {
-      btn.textContent = this.showConstellations
-        ? "⭐ Hide Constellations"
-        : "⭐ Show Constellations";
+      btn.classList.toggle('active', this.showConstellations);
+      const textSpan = btn.querySelector('.btn-text');
+      if (textSpan) {
+        textSpan.textContent = this.showConstellations ? 'Hide Lines' : 'Constellations';
+      }
+    }
+    
+    // When turning on, look toward Orion so user can see the lines
+    if (this.showConstellations && this.constellations.length > 0) {
+      this.lookAtConstellation('Orion');
     }
     console.log(
       `Constellations ${this.showConstellations ? "visible" : "hidden"}`
@@ -1582,9 +1652,11 @@ class CosmicWebViewer {
     this.showStarLabels = !this.showStarLabels;
     const btn = document.getElementById("toggleStarLabels");
     if (btn) {
-      btn.textContent = this.showStarLabels
-        ? "⭐ Hide Legendary Stars"
-        : "⭐ Show Legendary Stars";
+      btn.classList.toggle('active', this.showStarLabels);
+      const textSpan = btn.querySelector('.btn-text');
+      if (textSpan) {
+        textSpan.textContent = this.showStarLabels ? 'Hide Names' : 'Star Names';
+      }
     }
 
     // Only clear labels if BOTH star labels AND solar system labels are disabled
@@ -1681,9 +1753,11 @@ class CosmicWebViewer {
     this.showSolarSystemLabels = !this.showSolarSystemLabels;
     const btn = document.getElementById("toggleSolarSystem");
     if (btn) {
-      btn.textContent = this.showSolarSystemLabels
-        ? "🌍 Hide Solar System Labels"
-        : "🌍 Show Solar System Labels";
+      btn.classList.toggle('active', this.showSolarSystemLabels);
+      const textSpan = btn.querySelector('.btn-text');
+      if (textSpan) {
+        textSpan.textContent = this.showSolarSystemLabels ? 'Hide Solar System' : 'Solar System Labels';
+      }
     }
 
     console.log(
@@ -2601,18 +2675,32 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Wire up help button
+  const helpBtn = document.getElementById("helpBtn");
+  if (helpBtn) {
+    helpBtn.addEventListener("click", () => viewer.toggleHelpModal());
+  }
+
   // Wire up constellation toggle button
   const constellationBtn = document.getElementById("toggleConstellations");
   if (constellationBtn) {
     constellationBtn.addEventListener("click", () =>
       viewer.toggleConstellations()
     );
+    // Set initial active state if constellations are visible by default
+    if (viewer.showConstellations) {
+      constellationBtn.classList.add('active');
+    }
   }
 
   // Wire up star labels toggle button
   const starLabelsBtn = document.getElementById("toggleStarLabels");
   if (starLabelsBtn) {
     starLabelsBtn.addEventListener("click", () => viewer.toggleStarLabels());
+    // Set initial active state
+    if (viewer.showStarLabels) {
+      starLabelsBtn.classList.add('active');
+    }
   }
 
   // Wire up solar system toggle button
