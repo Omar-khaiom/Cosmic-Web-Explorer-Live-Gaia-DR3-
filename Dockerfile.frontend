@@ -1,0 +1,22 @@
+# Frontend static server
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy viewer files
+COPY viewer/ /app/viewer/
+COPY data/ /app/data/
+COPY viewer/index.html /app/index.html
+
+# Install a better HTTP server
+RUN pip install http-server
+
+# Expose port 3000
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:3000/viewer/index.html').read()" || exit 1
+
+# Run HTTP server (serves index.html as default)
+CMD ["python", "-m", "http.server", "3000", "--directory", "/app"]

@@ -240,6 +240,101 @@ Response (fields abbreviated):
 -- CORS: backend allows http://localhost:3000 (and 8000) by default (see `backend/config.py`).
 - Gaia 500 errors: transient. The service auto-retries; try again or move slightly to trigger a new region.
 
+## Deploy to Azure (Production - Two Web Apps)
+
+### Prerequisites
+✅ Azure Education Account (~$100/month free credit)
+✅ Docker Hub Account (free tier)
+✅ Docker Desktop installed locally
+✅ GitHub Repository
+
+### Step 1: Build & Push Docker Images
+
+```powershell
+cd d:\space
+docker login
+
+# Build backend
+docker build -f Dockerfile.backend -t omarkhaiom/stellar-cartographer-backend:latest .
+docker push omarkhaiom/stellar-cartographer-backend:latest
+
+# Build frontend
+docker build -f Dockerfile.frontend -t omarkhaiom/stellar-cartographer-frontend:latest .
+docker push omarkhaiom/stellar-cartographer-frontend:latest
+```
+
+**Replace `omarkhaiom` with your Docker Hub username!**
+
+### Step 2: Create Backend Web App
+
+1. Go to [portal.azure.com](https://portal.azure.com)
+2. **Create Resource** → **Web App**
+3. **Basics Tab:**
+   - **Name:** `celestial-navigator` (URL: celestial-navigator.azurewebsites.net)
+   - **Publish:** Docker Container
+   - **OS:** Linux
+   - **Region:** Central India (or nearest)
+   - **Plan:** Free (F1)
+
+4. **Container Tab:**
+   - **Image Source:** Other container registries
+   - **Registry server URL:** `https://index.docker.io`
+   - **Image and tag:** `omarkhaiom/stellar-cartographer-backend:latest`
+   - **Port:** `8080`
+
+5. **Review + Create** → **Create**
+
+### Step 3: Create Frontend Web App
+
+1. **Create Resource** → **Web App** (again)
+2. **Basics Tab:**
+   - **Name:** `celestial-navigator-viewer` (URL: celestial-navigator-viewer.azurewebsites.net)
+   - **Publish:** Docker Container
+   - **OS:** Linux
+   - **Region:** Central India (same as backend)
+   - **Plan:** Free (F1)
+
+3. **Container Tab:**
+   - **Image Source:** Other container registries
+   - **Registry server URL:** `https://index.docker.io`
+   - **Image and tag:** `omarkhaiom/stellar-cartographer-frontend:latest`
+   - **Port:** `3000`
+
+4. **Review + Create** → **Create**
+
+### Step 4: Test Deployment
+
+**Backend API:** `https://celestial-navigator.azurewebsites.net/health`
+- Should respond with JSON health status
+
+**Frontend Viewer:** `https://celestial-navigator-viewer.azurewebsites.net/viewer/index.html`
+- Should load Three.js viewer and connect to backend
+
+### Deployment Summary
+
+| Component | URL | Port | Image |
+|-----------|-----|------|-------|
+| **Backend** | https://celestial-navigator.azurewebsites.net | 8080 | `omarkhaiom/stellar-cartographer-backend:latest` |
+| **Frontend** | https://celestial-navigator-viewer.azurewebsites.net | 3000 | `omarkhaiom/stellar-cartographer-frontend:latest` |
+| **Cost** | Free tier (F1) | Both on free | $0 (Education credit) |
+| **Data** | SQLite (in-container) | Ephemeral | Downloaded on first query |
+
+### Troubleshooting
+
+**Frontend shows "offline":**
+- Check if `main.js` has correct backend URL: `https://celestial-navigator.azurewebsites.net`
+- Verify backend is running: test `/health` endpoint
+- Check browser console (F12) for CORS or fetch errors
+
+**Backend 504 timeout:**
+- Wait 2-3 minutes for initial startup
+- Check Logs in Azure Portal → App → Log stream
+- Verify `requirements.txt` dependencies installed
+
+**Both apps "Stopped":**
+- Go to each Web App → Top menu → **Start**
+- Wait 1-2 minutes for startup
+
 ## Project Structure
 
 ```
@@ -259,8 +354,12 @@ d:\space
 │  └─ three.min.js
 ├─ data/
 │  └─ milky_way_stars.csv  # Small fallback sample
-├─ start_all.ps1           # Starts both servers
+├─ Dockerfile.backend      # Backend container
+├─ Dockerfile.frontend     # Frontend container
+├─ docker-compose.yml      # Local multi-container setup
+├─ start_all.ps1           # Local development launcher
 ├─ .gitignore              # Ignores logs, cache.db, etc.
+├─ .dockerignore           # Ignores files in Docker builds
 └─ LICENSE
 ```
 

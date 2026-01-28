@@ -1,0 +1,32 @@
+# Combined container: Backend serves both API and static frontend
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy backend
+COPY backend/ /app/backend/
+
+# Copy frontend (will be served by FastAPI StaticFiles)
+COPY viewer/ /app/viewer/
+COPY data/ /app/data/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+
+# Expose port 5000 (backend serves everything)
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()" || exit 1
+
+# Set working directory to backend
+WORKDIR /app/backend
+
+# Run backend only (it serves static files too via FastAPI)
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--log-level", "info"]

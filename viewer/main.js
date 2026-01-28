@@ -5,7 +5,8 @@ const API_BASE = (() => {
   if (qp) return qp.replace(/\/$/, '');
   const ls = localStorage.getItem('apiBase');
   if (ls) return ls.replace(/\/$/, '');
-  return 'http://localhost:5000';
+  // Use same origin (backend serves both API and viewer)
+  return window.location.origin;
 })();
 
 const StatusUI = (() => {

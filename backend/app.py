@@ -5,9 +5,11 @@ Professional backend for live astronomical data streaming
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from loguru import logger
 import sys
+import os
 from pathlib import Path
 
 from config import settings
@@ -79,18 +81,9 @@ app.include_router(stars_router)
 
 @app.get("/")
 async def root():
-    """API root endpoint"""
-    return {
-        "name": settings.API_TITLE,
-        "version": settings.API_VERSION,
-        "status": "operational",
-        "docs": "/docs" if settings.DEBUG else "disabled",
-        "endpoints": {
-            "stars_cone": "/api/stars/cone",
-            "stars_frustum": "/api/stars/frustum",
-            "galactic_center": "/api/stars/galactic-center",
-        }
-    }
+    """Redirect to viewer"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/viewer/index.html")
 
 
 @app.get("/health")
@@ -122,6 +115,22 @@ async def global_exception_handler(request: Request, exc: Exception):
             "detail": str(exc) if settings.DEBUG else "An error occurred"
         }
     )
+
+
+# Mount static files for viewer (must be AFTER all API routes)
+# Check multiple possible paths for the viewer directory
+viewer_paths = [
+    Path(__file__).parent.parent / "viewer",  # Local dev: d:\space\viewer
+    Path("/app/viewer"),                        # Docker: /app/viewer
+]
+
+for viewer_path in viewer_paths:
+    if viewer_path.exists():
+        app.mount("/viewer", StaticFiles(directory=str(viewer_path), html=True), name="viewer")
+        logger.info(f"📁 Static files mounted from: {viewer_path}")
+        break
+else:
+    logger.warning("⚠️ Viewer directory not found - static files not mounted")
 
 
 if __name__ == "__main__":
