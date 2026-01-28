@@ -8,10 +8,10 @@
         body {
             margin: 0;
             padding: 0;
-            background: #000000;
+            background: #02040a;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display', sans-serif;
             overflow: hidden;
-            color: #ffffff;
+            color: #e5e9f0;
         }
         
         @keyframes pulse {
@@ -72,12 +72,12 @@
             position: absolute;
             top: 20px;
             left: 20px;
-            background: linear-gradient(135deg, rgba(5, 12, 24, 0.75) 0%, rgba(8, 16, 32, 0.7) 50%, rgba(5, 12, 24, 0.75) 100%);
+            background: rgba(4, 8, 16, 0.9);
             padding: 18px 20px;
             border-radius: 16px;
             backdrop-filter: blur(24px) saturate(200%);
             -webkit-backdrop-filter: blur(24px) saturate(200%);
-            border: 1px solid rgba(100, 181, 246, 0.2);
+            border: 1px solid rgba(120, 144, 156, 0.6);
             min-width: 290px;
             width: clamp(290px, 20vw, 340px);
             max-height: calc(100vh - 40px);
@@ -86,11 +86,8 @@
             overflow: hidden;
             z-index: 1000;
             transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 
-                        0 0 0 1px rgba(100, 181, 246, 0.05),
-                        0 0 30px rgba(100, 181, 246, 0.12),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-            animation: slideIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), borderPulse 4s ease-in-out infinite;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85);
+            animation: slideIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         
         #hud::before {
@@ -112,15 +109,8 @@
             right: 0;
             bottom: 0;
             pointer-events: none;
-            background: repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 2px,
-                rgba(100, 181, 246, 0.015) 2px,
-                rgba(100, 181, 246, 0.015) 4px
-            );
+            background: radial-gradient(circle at top left, rgba(255,255,255,0.06), transparent 55%);
             border-radius: 16px;
-            animation: hologramFlicker 8s linear infinite;
         }
         
         #hud:hover {
@@ -149,9 +139,9 @@
         }
         
         .minimize-btn {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(100, 181, 246, 0.2);
-            color: #90caf9;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(120, 144, 156, 0.7);
+            color: #eceff4;
             padding: 3px 7px;
             border-radius: 6px;
             cursor: pointer;
@@ -166,44 +156,37 @@
         }
         
         .minimize-btn:hover {
-            background: rgba(100, 181, 246, 0.12);
-            border-color: rgba(100, 181, 246, 0.4);
-            color: #64b5f6;
+            background: rgba(25, 35, 52, 0.95);
+            border-color: rgba(236, 239, 244, 0.8);
+            color: #eceff4;
             transform: scale(1.05);
         }
         
         #hud h3 {
             margin-top: 0;
             margin-bottom: 0;
-            background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 25%, #90caf9 50%, #4fc3f7 75%, #64b5f6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            background-size: 200% 200%;
+            color: #eceff4;
             font-size: 17px;
             font-weight: 600;
             letter-spacing: 0.3px;
-            animation: gradientShift 4s ease infinite;
-            filter: drop-shadow(0 0 8px rgba(100, 181, 246, 0.5));
         }
         
         .status {
-            color: #81c784;
+            color: #a5b4c3;
             font-weight: 400;
             margin: 12px 0;
             font-size: 12px;
             padding: 8px 10px;
-            background: linear-gradient(135deg, rgba(129, 199, 132, 0.12) 0%, rgba(129, 199, 132, 0.08) 50%, rgba(129, 199, 132, 0.12) 100%);
+            background: rgba(11, 15, 25, 0.9);
             background-size: 200% 200%;
             border-radius: 8px;
-            border-left: 2px solid rgba(129, 199, 132, 0.6);
+            border-left: 2px solid rgba(120, 144, 156, 0.8);
             transition: all 0.3s ease;
-            animation: gradientShift 3s ease infinite;
         }
         
         .status:hover {
-            background: linear-gradient(135deg, rgba(129, 199, 132, 0.12) 0%, rgba(129, 199, 132, 0.08) 100%);
-            border-left-color: #81c784;
+            background: rgba(15, 23, 42, 0.95);
+            border-left-color: #eceff4;
         }
         
         .control-group {
@@ -244,7 +227,7 @@
         }
         
         .slider-value {
-            color: #4dd0e1;
+            color: #cfd8dc;
             font-weight: 600;
             font-family: 'SF Mono', 'Consolas', monospace;
             font-size: 12px;
@@ -255,49 +238,53 @@
             width: 100%;
             margin-bottom: 4px;
         }
+
+        /* Collapsible tuning panel */
+        .panel-title.tuning-toggle {
+            cursor: pointer;
+        }
+        .tuning-content.collapsed {
+            display: none;
+        }
         
         /* Custom range slider styling */
         input[type="range"] {
             -webkit-appearance: none;
             appearance: none;
             height: 6px;
-            background: rgba(100, 181, 246, 0.15);
+            background: rgba(55, 65, 81, 0.9);
             border-radius: 3px;
             outline: none;
             transition: all 0.2s ease;
         }
         
         input[type="range"]:hover {
-            background: rgba(100, 181, 246, 0.25);
+            background: rgba(75, 85, 99, 0.95);
         }
         
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 16px;
-            height: 16px;
-            background: linear-gradient(135deg, #4dd0e1, #26a69a);
+            width: 14px;
+            height: 14px;
+            background: #e5e9f0;
             border-radius: 50%;
             cursor: pointer;
-            box-shadow: 0 0 10px rgba(77, 208, 225, 0.5),
-                        0 2px 6px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
             transition: all 0.2s ease;
         }
         
         input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.15);
-            box-shadow: 0 0 20px rgba(77, 208, 225, 0.7),
-                        0 2px 8px rgba(0, 0, 0, 0.4);
+            transform: scale(1.05);
         }
         
         input[type="range"]::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            background: linear-gradient(135deg, #4dd0e1, #26a69a);
+            width: 14px;
+            height: 14px;
+            background: #e5e9f0;
             border-radius: 50%;
             cursor: pointer;
             border: none;
-            box-shadow: 0 0 10px rgba(77, 208, 225, 0.5);
         }
         
         /* Frame button specific styling */
@@ -310,11 +297,10 @@
         }
         
         .frame-btn.active {
-            background: linear-gradient(135deg, rgba(77, 208, 225, 0.25) 0%, rgba(38, 166, 154, 0.2) 100%);
-            border-color: rgba(77, 208, 225, 0.6);
-            color: #4dd0e1;
-            box-shadow: 0 0 15px rgba(77, 208, 225, 0.3),
-                        inset 0 0 10px rgba(77, 208, 225, 0.1);
+            background: rgba(30, 64, 175, 0.6);
+            border-color: rgba(191, 219, 254, 0.9);
+            color: #e5e9f0;
+            box-shadow: none;
         }
         
         .button-group {
@@ -329,12 +315,11 @@
         }
         
         button {
-            background: linear-gradient(135deg, rgba(66, 165, 245, 0.12) 0%, rgba(25, 118, 210, 0.08) 50%, rgba(66, 165, 245, 0.12) 100%);
-            background-size: 200% 200%;
-            border: 1px solid rgba(100, 181, 246, 0.25);
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(100, 116, 139, 0.9);
             padding: 10px 12px;
             border-radius: 10px;
-            color: #90caf9;
+            color: #e5e9f0;
             cursor: pointer;
             font-size: 11px;
             font-weight: 500;
@@ -342,8 +327,7 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
-            animation: gradientShift 4s ease infinite;
-            text-shadow: 0 0 10px rgba(100, 181, 246, 0.3);
+            text-shadow: none;
         }
         
         button .btn-icon {
@@ -358,31 +342,12 @@
             opacity: 0.9;
         }
         
-        button::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(100, 181, 246, 0.2), transparent);
-            transition: left 0.5s ease;
-        }
-        
-        button:hover::before {
-            left: 100%;
-        }
-        
         button:hover {
-            background: linear-gradient(135deg, rgba(66, 165, 245, 0.2) 0%, rgba(25, 118, 210, 0.15) 50%, rgba(66, 165, 245, 0.2) 100%);
-            background-size: 200% 200%;
-            border-color: rgba(100, 181, 246, 0.5);
-            color: #64b5f6;
-            transform: translateY(-2px) scale(1.02);
-            box-shadow: 0 6px 20px rgba(100, 181, 246, 0.25),
-                        0 0 25px rgba(100, 181, 246, 0.15),
-                        inset 0 0 15px rgba(100, 181, 246, 0.05);
-            text-shadow: 0 0 15px rgba(100, 181, 246, 0.5);
+            background: rgba(30, 41, 59, 0.95);
+            border-color: rgba(148, 163, 184, 1);
+            color: #f9fafb;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
         }
         
         button:active {
@@ -392,50 +357,31 @@
         }
         
         button.active, button.btn-active {
-            background: linear-gradient(135deg, rgba(77, 208, 225, 0.2) 0%, rgba(38, 166, 154, 0.15) 50%, rgba(77, 208, 225, 0.2) 100%);
-            border-color: rgba(77, 208, 225, 0.5);
-            color: #4dd0e1;
-            box-shadow: 0 0 20px rgba(77, 208, 225, 0.2),
-                        inset 0 0 10px rgba(77, 208, 225, 0.05);
-            text-shadow: 0 0 10px rgba(77, 208, 225, 0.4);
+            background: rgba(15, 23, 42, 1);
+            border-color: rgba(191, 219, 254, 1);
+            color: #f9fafb;
+            box-shadow: 0 0 0 1px rgba(191, 219, 254, 0.6);
+            text-shadow: none;
         }
         
         .info-panel {
-            background: linear-gradient(135deg, rgba(10, 18, 35, 0.5) 0%, rgba(8, 14, 28, 0.45) 50%, rgba(10, 18, 35, 0.5) 100%);
-            background-size: 200% 200%;
+            background: rgba(10, 16, 28, 0.95);
             padding: 14px 16px;
             border-radius: 12px;
             margin-top: 14px;
-            border: 1px solid rgba(77, 208, 225, 0.15);
-            transition: all 0.3s ease;
-            animation: gradientShift 5s ease infinite;
+            border: 1px solid rgba(55, 65, 81, 0.9);
+            transition: background 0.2s ease, border-color 0.2s ease;
             position: relative;
             overflow: hidden;
         }
         
-        .info-panel::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 50%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(77, 208, 225, 0.08), transparent);
-            transition: left 0.6s ease;
-        }
-        
-        .info-panel:hover::before {
-            left: 150%;
-        }
-        
         .info-panel:hover {
-            border-color: rgba(77, 208, 225, 0.35);
-            box-shadow: 0 0 20px rgba(77, 208, 225, 0.15),
-                        inset 0 0 15px rgba(77, 208, 225, 0.03);
+            background: rgba(15, 23, 42, 0.98);
+            border-color: rgba(75, 85, 99, 1);
         }
         
         .panel-title {
-            color: #4dd0e1;
+            color: #e5e9f0;
             font-weight: 600;
             margin-bottom: 12px;
             font-size: 11px;
@@ -450,7 +396,7 @@
             content: '';
             flex: 1;
             height: 1px;
-            background: linear-gradient(90deg, rgba(77, 208, 225, 0.3), transparent);
+            background: linear-gradient(90deg, rgba(148, 163, 184, 0.8), transparent);
         }
         
         .info-row {
@@ -462,7 +408,7 @@
             transition: all 0.25s ease;
             padding: 4px 8px;
             border-radius: 6px;
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(15, 23, 42, 0.9);
         }
         
         .info-row:last-child {
@@ -470,19 +416,19 @@
         }
         
         .info-row:hover {
-            transform: translateX(4px);
-            background: rgba(77, 208, 225, 0.08);
+            transform: translateX(2px);
+            background: rgba(31, 41, 55, 0.95);
         }
         
         .info-label {
-            color: #78909c;
+            color: #9ca3af;
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         
         .info-value {
-            color: #e1f5fe;
+            color: #e5e9f0;
             font-weight: 600;
             font-variant-numeric: tabular-nums;
             font-family: 'SF Mono', 'Consolas', monospace;
@@ -510,21 +456,13 @@
         }
         
         #star-search:focus {
-            border-color: rgba(100, 181, 246, 0.6);
-            box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.15), 
-                        0 0 20px rgba(100, 181, 246, 0.4),
-                        0 0 40px rgba(100, 181, 246, 0.2);
-            animation: neonGlow 2s ease-in-out infinite;
+            border-color: rgba(191, 219, 254, 0.9);
+            box-shadow: 0 0 0 1px rgba(191, 219, 254, 0.7);
         }
         
         #info-star-name {
-            background: linear-gradient(135deg, #64b5f6 0%, #90caf9 25%, #4fc3f7 50%, #90caf9 75%, #64b5f6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            background-size: 300% 300%;
-            animation: gradientShift 3s ease-in-out infinite;
-            filter: drop-shadow(0 0 12px rgba(100, 181, 246, 0.6));
+            color: #e5e9f0;
+            text-shadow: none;
         }
         
         @keyframes shimmer {
@@ -931,7 +869,7 @@
 
     <div id="hud">
         <div class="hud-header">
-            <h3 style="margin: 0;">🌌 SPACE EXPLORER</h3>
+            <h3 style="margin: 0;">🧭 Astronavigation</h3>
             <div style="display: flex; gap: 6px; align-items: center;">
                 <button class="minimize-btn" id="helpBtn" title="Keyboard Shortcuts (?)">?</button>
                 <button class="minimize-btn" id="minimizeBtn" title="Minimize HUD">−</button>
@@ -949,10 +887,6 @@
                 <button id="resetCamera">
                     <span class="btn-icon">🏠</span>
                     <span class="btn-text">Reset View</span>
-                </button>
-                <button id="toggleConstellations">
-                    <span class="btn-icon">✨</span>
-                    <span class="btn-text">Constellations</span>
                 </button>
                 <button id="toggleStarLabels">
                     <span class="btn-icon">⭐</span>
@@ -974,31 +908,74 @@
                 </div>
             </div>
             
-            <!-- Tuning Panel -->
+            <!-- Tuning Panel (collapsible) -->
             <div class="info-panel" id="tuningPanel">
-                <div class="panel-title">🎛️ VISUAL TUNING</div>
+                <div class="panel-title tuning-toggle">🎛️ VISUAL TUNING</div>
+                <div class="tuning-content collapsed">
+                    <div class="control-group">
+                        <label for="fovControl">Field of View <span id="fovValue" class="slider-value">50°</span></label>
+                        <input type="range" id="fovControl" min="30" max="100" step="1" value="50">
+                    </div>
 
-                <div class="control-group">
-                    <label for="fovControl">Field of View <span id="fovValue" class="slider-value">50°</span></label>
-                    <input type="range" id="fovControl" min="30" max="100" step="1" value="50">
-                </div>
+                    <div class="control-group">
+                        <label for="starSizeControl">Star Size <span id="starSizeValue" class="slider-value">1.0×</span></label>
+                        <input type="range" id="starSizeControl" min="0.5" max="3" step="0.1" value="1">
+                    </div>
 
-                <div class="control-group">
-                    <label for="starSizeControl">Star Size <span id="starSizeValue" class="slider-value">1.0×</span></label>
-                    <input type="range" id="starSizeControl" min="0.5" max="3" step="0.1" value="1">
-                </div>
+                    <div class="control-group">
+                        <label for="intensityControl">Brightness <span id="intensityValue" class="slider-value">1.0×</span></label>
+                        <input type="range" id="intensityControl" min="0.5" max="2.5" step="0.05" value="1">
+                    </div>
 
-                <div class="control-group">
-                    <label for="intensityControl">Brightness <span id="intensityValue" class="slider-value">1.0×</span></label>
-                    <input type="range" id="intensityControl" min="0.5" max="2.5" step="0.05" value="1">
-                </div>
-
-                <div class="control-group" style="margin-bottom:0;">
-                    <label for="navSpeedControl">Nav Speed <span id="navSpeedValue" class="slider-value">1.0×</span></label>
-                    <input type="range" id="navSpeedControl" min="0.2" max="5" step="0.1" value="1">
+                    <div class="control-group" style="margin-bottom:0;">
+                        <label for="navSpeedControl">Nav Speed <span id="navSpeedValue" class="slider-value">1.0×</span></label>
+                        <input type="range" id="navSpeedControl" min="0.2" max="5" step="0.1" value="1">
+                    </div>
+                    <div class="control-group" style="margin-top:10px;">
+                        <label for="timeWarpToggle">Time Motion</label>
+                        <button id="timeWarpToggle" style="width:100%;">Time Warp: Off</button>
+                    </div>
+                    <div class="control-group" style="margin-top:6px;">
+                        <label for="timeWarpSpeed">Time Speed <span id="timeWarpSpeedValue" class="slider-value">1.0k yr/s</span></label>
+                        <input type="range" id="timeWarpSpeed" min="100" max="5000" step="100" value="1000">
+                    </div>
+                    <div class="control-group" style="margin-top:10px;">
+                        <label for="parallaxToggle">Parallax Walkthrough</label>
+                        <button id="parallaxToggle" style="width:100%;">Parallax: Off</button>
+                    </div>
+                    <div class="control-group" style="margin-top:6px;">
+                        <label for="parallaxSpeed">Parallax Speed <span id="parallaxSpeedValue" class="slider-value">1.0×</span></label>
+                        <input type="range" id="parallaxSpeed" min="0.2" max="3" step="0.1" value="1">
+                    </div>
                 </div>
             </div>
         
+            <!-- Saved Views Panel -->
+            <div class="info-panel" id="viewsPanel">
+                <div class="panel-title">📌 SAVED VIEWS</div>
+                <div class="info-row">
+                    <span class="info-label">View 1</span>
+                    <span>
+                        <button id="saveView1" style="margin-right:4px;min-width:52px;">Save</button>
+                        <button id="loadView1" style="min-width:52px;">Go</button>
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">View 2</span>
+                    <span>
+                        <button id="saveView2" style="margin-right:4px;min-width:52px;">Save</button>
+                        <button id="loadView2" style="min-width:52px;">Go</button>
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">View 3</span>
+                    <span>
+                        <button id="saveView3" style="margin-right:4px;min-width:52px;">Save</button>
+                        <button id="loadView3" style="min-width:52px;">Go</button>
+                    </span>
+                </div>
+            </div>
+
             <!-- Stats Panel -->
             <div class="info-panel" id="hoverInfo">
                 <div class="panel-title">📊 TELEMETRY</div>

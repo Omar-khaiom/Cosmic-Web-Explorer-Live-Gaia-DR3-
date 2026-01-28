@@ -162,6 +162,17 @@ class CosmicWebViewer {
     this.fps = 0;
     this.lastFpsTime = performance.now();
 
+    // Time / motion controls
+    this.timeWarpEnabled = false;
+    this.timeWarpSpeedYearsPerSecond = 1000; // years of sky motion per real second (still sped up, but calmer)
+    this.elapsedSimYears = 0;
+
+    // Parallax walkthrough mode
+    this.parallaxModeEnabled = false; // When true, camera auto-moves forward to emphasize parallax
+    this.parallaxDirection = new THREE.Vector3(0, 0, -1); // Forward direction locked at mode start
+    this.parallaxSpeedBase = 800; // Base speed for parallax walkthrough (units/s)
+    this.parallaxSpeedMultiplier = 1.0; // User-controlled multiplier via slider
+
     // HUD tracking
     this.velocity = 0;
     this.lastCameraPosition = new THREE.Vector3();
@@ -171,7 +182,7 @@ class CosmicWebViewer {
     this.labelContainer = null;
     this.famousStars = null;
     this.approachDistance = 50; // Show labels within 50 parsecs
-    this.showStarLabels = true; // Toggle for star labels
+    this.showStarLabels = false; // Start with labels OFF; user can toggle on
 
     // Solar system
     this.solarSystemData = null;
@@ -193,12 +204,22 @@ class CosmicWebViewer {
     this.lastLoadDirection = new THREE.Vector3();
     this.loadAngleThresholdDeg = 10; // Reload when view direction changes this much
 
+    // Saved camera viewpoints (for quick return)
+    this.savedViews = [null, null, null];
+
     // Constellation and label data
     this.constellations = [];
     this.brightStars = [];
     this.constellationLines = null;
     this.starLabels = [];
     this.showConstellations = true;
+    this.constellationMaterial = null;
+    this.constellationBaseOpacity = 0.5;
+    this.constellationFlashTime = 0;
+    this.constellationFlashDuration = 2000; // ms
+    this.constellationBaseColor = new THREE.Color(0x66ccff);
+    this.constellationFlashColor = new THREE.Color(0xffffff);
+    this.constellationsWorldSpace = false;
 
     // Bright star catalog (base sky layer)
     this.brightStarCatalog = [];
@@ -258,8 +279,8 @@ class CosmicWebViewer {
     // Load solar system data
     await this.loadSolarSystem();
 
-    // Load constellation overlays
-    await this.loadConstellations();
+    // NOTE: Constellations disabled for now (UI is too janky).
+    // await this.loadConstellations();
 
     // Load 20K star catalog with real 3D positions
     await this.loadBrightCatalog();
@@ -286,10 +307,6 @@ class CosmicWebViewer {
       // Escape to close modals
       if (e.key === 'Escape') {
         this.closeHelpModal();
-      }
-      // C to toggle constellations
-      if (e.key === 'c' || e.key === 'C') {
-        this.toggleConstellations();
       }
       // L to toggle star labels
       if (e.key === 'l' || e.key === 'L') {
@@ -347,7 +364,6 @@ class CosmicWebViewer {
           </div>
           <div class="help-section">
             <h3>⌨️ Shortcuts</h3>
-            <div class="help-row"><kbd>C</kbd><span>Toggle constellations</span></div>
             <div class="help-row"><kbd>L</kbd><span>Toggle star labels</span></div>
             <div class="help-row"><kbd>R</kbd><span>Reset camera view</span></div>
             <div class="help-row"><kbd>?</kbd><span>Toggle this help</span></div>
@@ -392,6 +408,8 @@ class CosmicWebViewer {
       // Create solar system objects
       this.createSolarSystemPoints();
 
+      // Constellations are currently disabled; skip line creation for now.
+
       this.updateStatus(
         `Viewing ${this.loadedStarCount} stars from Gaia DR3 (TRUE 3D with real distances)`
       );
@@ -411,14 +429,72 @@ class CosmicWebViewer {
   setupScene() {
     this.scene = new THREE.Scene();
     // No fog - we want to see deep space!
+
+    // Procedural sky dome for a soft Milky Way–style backdrop
+    const radius = 20000;
+    const skyGeo = new THREE.SphereGeometry(radius, 48, 32);
+
+    const skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        uColorSpace: { value: new THREE.Color(0x02040a) },
+        uColorBand: { value: new THREE.Color(0x1e293b) },
+        uColorCore: { value: new THREE.Color(0x4b5563) },
+      },
+      vertexShader: `
+        varying vec3 vDir;
+        void main() {
+          vDir = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vDir;
+        uniform vec3 uColorSpace;
+        uniform vec3 uColorBand;
+        uniform vec3 uColorCore;
+
+        // Simple hash-based noise
+        float hash(vec3 p) {
+          p = fract(p * 0.3183099 + vec3(0.1,0.2,0.3));
+          p *= 17.0;
+          return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+
+        void main() {
+          // vDir.y ~ latitude; band around equator
+          float band = exp(-pow(vDir.y * 4.0, 2.0));
+
+          // Core brighter near one side of band (approx galactic center)
+          float coreAxis = vDir.x * 0.7 + vDir.z * 0.3;
+          float core = exp(-pow((coreAxis - 0.3) * 3.0, 2.0)) * band;
+
+          // Add a bit of noisy variation
+          float n = hash(vDir * 250.0);
+          float dust = band * (0.3 + 0.7 * n);
+
+          vec3 col = uColorSpace;
+          col = mix(col, uColorBand, clamp(dust, 0.0, 1.0));
+          col = mix(col, uColorCore, clamp(core, 0.0, 1.0));
+
+          // Very subtle output so stars stay dominant
+          col *= 0.8;
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+    });
+
+    this.skyDome = new THREE.Mesh(skyGeo, skyMat);
+    this.scene.add(this.skyDome);
   }
 
   setupCamera() {
     const aspect = window.innerWidth / window.innerHeight;
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, aspect, 0.1, 50000);
-    // Start at origin looking along +X axis - we're inside the galaxy now!
-    this.camera.position.set(0, 0, 0);
-    this.camera.lookAt(100, 0, 0);
+    // Start from a curated vantage point into the cluster
+    this.camera.position.set(-1407.2, 13.6, 36.0);
+    this.camera.lookAt(0, 0, 0);
 
     // Initialize rotation values from camera's initial orientation
     this.rotationX = this.camera.rotation.x;
@@ -844,6 +920,47 @@ class CosmicWebViewer {
     return { ra, dec };
   }
 
+  // Find nearest bright catalog star to given RA/Dec (degrees)
+  findNearestBrightStarPosition(raDeg, decDeg) {
+    if (!this.brightStarCatalog || this.brightStarCatalog.length === 0) {
+      return null;
+    }
+
+    let bestStar = null;
+    let bestScore = Infinity;
+
+    const raRad = THREE.MathUtils.degToRad(raDeg);
+    const decRad = THREE.MathUtils.degToRad(decDeg);
+    const sinDec = Math.sin(decRad);
+    const cosDec = Math.cos(decRad);
+
+    for (const star of this.brightStarCatalog) {
+      if (star.ra == null || star.dec == null) continue;
+      const ra2 = THREE.MathUtils.degToRad(star.ra);
+      const dec2 = THREE.MathUtils.degToRad(star.dec);
+      const sinDec2 = Math.sin(dec2);
+      const cosDec2 = Math.cos(dec2);
+
+      // Angular separation (great-circle distance) using dot product
+      const cosD =
+        sinDec * sinDec2 +
+        cosDec * cosDec2 * Math.cos(raRad - ra2);
+      const d = Math.acos(Math.max(-1, Math.min(1, cosD))); // radians
+
+      if (d < bestScore) {
+        bestScore = d;
+        bestStar = star;
+      }
+    }
+
+    // If we found something reasonable (< ~5 degrees), use that star's 3D position
+    if (bestStar && bestScore < THREE.MathUtils.degToRad(5)) {
+      return bestStar.pos ? bestStar.pos.clone() : new THREE.Vector3(bestStar.x, bestStar.y, bestStar.z);
+    }
+
+    return null;
+  }
+
   // Convert celestial coordinates back to 3D position
   equatorialToPosition(ra, dec, distance) {
     // Convert degrees to radians
@@ -861,28 +978,47 @@ class CosmicWebViewer {
   // Load constellation data
   async loadConstellations() {
     try {
-      // Try multiple paths for compatibility
-      let response = await fetch("../data/constellations.json");
+      // The viewer is served from /viewer/, so use absolute path to /data/
+      console.log("🔭 Loading constellation data...");
+      let response = await fetch("/data/constellations.json");
+      
       if (!response.ok) {
-        response = await fetch("/data/constellations.json");
+        // Fallback for local file:// access
+        response = await fetch("../data/constellations.json");
       }
-      if (!response.ok) throw new Error('Constellation data not found');
+      if (!response.ok) throw new Error(`Constellation data not found (status: ${response.status})`);
       
       const data = await response.json();
       this.constellations = data.constellations || [];
       this.brightStars = data.brightStars || [];
+      console.log(`✅ Loaded ${this.constellations.length} constellations`);
 
-      // Create constellation line geometry
-      if (this.constellations.length > 0) {
-        this.createConstellationLines();
-      }
-
-      console.log(
-        `✅ Loaded ${this.constellations.length} constellations`
-      );
+      // Populate constellation dropdown in HUD (if present)
+      this.populateConstellationDropdown();
     } catch (error) {
       console.warn("⚠️ Could not load constellation data:", error.message);
       // Not critical - continue without constellations
+    }
+  }
+
+  // Populate the HUD dropdown with available constellations
+  populateConstellationDropdown() {
+    const select = document.getElementById("constellationSelect");
+    if (!select || !this.constellations || !this.constellations.length) return;
+
+    // Reset options with a placeholder
+    select.innerHTML = '<option value="">Select constellation…</option>';
+
+    const names = this.constellations
+      .map((c) => c.name)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    for (const name of names) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
     }
   }
 
@@ -894,24 +1030,60 @@ class CosmicWebViewer {
       this.constellationLines.geometry.dispose();
       this.constellationLines.material.dispose();
     }
+    if (!this.constellations || this.constellations.length === 0) {
+      this.constellationLines = null;
+      this.constellationsWorldSpace = false;
+      return;
+    }
 
     const linePositions = [];
-    // Render on a celestial sphere - this will be attached to camera
-    const sphereRadius = 800;
+    const haveBrightCatalog =
+      this.brightStarCatalog && this.brightStarCatalog.length > 0;
 
-    for (const constellation of this.constellations) {
-      for (let i = 0; i < constellation.lines.length; i += 4) {
-        const ra1 = constellation.lines[i];
-        const dec1 = constellation.lines[i + 1];
-        const ra2 = constellation.lines[i + 2];
-        const dec2 = constellation.lines[i + 3];
+    if (haveBrightCatalog) {
+      // WORLD-SPACE MODE: anchor line endpoints to real bright stars
+      for (const constellation of this.constellations) {
+        if (!constellation.lines) continue;
+        for (const segment of constellation.lines) {
+          if (!Array.isArray(segment) || segment.length < 4) continue;
+          const [ra1, dec1, ra2, dec2] = segment;
 
-        const pos1 = this.equatorialToPosition(ra1, dec1, sphereRadius);
-        const pos2 = this.equatorialToPosition(ra2, dec2, sphereRadius);
+          const pos1 = this.findNearestBrightStarPosition(ra1, dec1);
+          const pos2 = this.findNearestBrightStarPosition(ra2, dec2);
+          if (!pos1 || !pos2) continue;
 
-        linePositions.push(pos1.x, pos1.y, pos1.z);
-        linePositions.push(pos2.x, pos2.y, pos2.z);
+          linePositions.push(pos1.x, pos1.y, pos1.z);
+          linePositions.push(pos2.x, pos2.y, pos2.z);
+        }
       }
+
+      // If for some reason we couldn't anchor anything, fall back to overlay
+      if (linePositions.length === 0) {
+        console.warn(
+          "⚠️ No world-space constellation segments could be anchored; falling back to overlay sphere."
+        );
+      } else {
+        this.constellationsWorldSpace = true;
+      }
+    }
+
+    // Fallback: draw on a celestial sphere around the camera (overlay mode)
+    if (linePositions.length === 0) {
+      const sphereRadius = 800;
+      for (const constellation of this.constellations) {
+        if (!constellation.lines) continue;
+        for (const segment of constellation.lines) {
+          if (!Array.isArray(segment) || segment.length < 4) continue;
+          const [ra1, dec1, ra2, dec2] = segment;
+
+          const pos1 = this.equatorialToPosition(ra1, dec1, sphereRadius);
+          const pos2 = this.equatorialToPosition(ra2, dec2, sphereRadius);
+
+          linePositions.push(pos1.x, pos1.y, pos1.z);
+          linePositions.push(pos2.x, pos2.y, pos2.z);
+        }
+      }
+      this.constellationsWorldSpace = false;
     }
 
     const geometry = new THREE.BufferGeometry();
@@ -922,54 +1094,138 @@ class CosmicWebViewer {
 
     // Brighter, more visible lines
     const material = new THREE.LineBasicMaterial({
-      color: 0x66ccff,
+      color: this.constellationBaseColor.clone(),
       transparent: true,
-      opacity: 0.6,
+      opacity: this.constellationBaseOpacity,
       depthTest: false, // Always render on top
       depthWrite: false,
     });
 
+    this.constellationMaterial = material;
     this.constellationLines = new THREE.LineSegments(geometry, material);
     this.scene.add(this.constellationLines);
     this.constellationLines.visible = this.showConstellations;
-    
-    console.log(`✨ Created constellation lines for ${this.constellations.length} constellations`);
+
+    console.log(
+      `✨ Created constellation lines for ${this.constellations.length} constellations (worldSpace=${this.constellationsWorldSpace})`
+    );
   }
 
   // Look toward a constellation (points camera in that direction)
   lookAtConstellation(name) {
-    const constellation = this.constellations.find(c => 
+    const constellation = this.constellations.find((c) =>
       c.name.toLowerCase() === name.toLowerCase()
     );
-    
-    if (!constellation || !constellation.lines.length) {
+
+    if (!constellation || !constellation.lines || !constellation.lines.length) {
       console.warn(`Constellation "${name}" not found`);
       return;
     }
-    
-    // Calculate center of constellation from its lines
-    let totalRA = 0, totalDec = 0, count = 0;
-    for (let i = 0; i < constellation.lines.length; i += 2) {
-      totalRA += constellation.lines[i];
-      totalDec += constellation.lines[i + 1];
-      count++;
+
+    // Calculate center of constellation from all segment endpoints
+    let totalRA = 0,
+      totalDec = 0,
+      count = 0;
+    for (const segment of constellation.lines) {
+      if (!Array.isArray(segment) || segment.length < 4) continue;
+      const [ra1, dec1, ra2, dec2] = segment;
+      totalRA += ra1 + ra2;
+      totalDec += dec1 + dec2;
+      count += 2;
     }
+
+    if (!count) {
+      console.warn(`Constellation "${name}" has no valid segments`);
+      return;
+    }
+
     const centerRA = totalRA / count;
     const centerDec = totalDec / count;
-    
+
     // Convert to look direction (at distance 100 from camera)
     const lookTarget = this.equatorialToPosition(centerRA, centerDec, 100);
     lookTarget.add(this.camera.position);
-    
+
     // Smoothly look toward constellation
     this.camera.lookAt(lookTarget);
-    
+
     // Update rotation targets
     this.targetRotationX = this.camera.rotation.x;
     this.targetRotationY = this.camera.rotation.y;
-    
-    console.log(`👀 Looking at ${name} (RA: ${centerRA.toFixed(1)}°, Dec: ${centerDec.toFixed(1)}°)`);
+
+    console.log(
+      `👀 Looking at ${name} (RA: ${centerRA.toFixed(1)}°, Dec: ${centerDec.toFixed(1)}°)`
+    );
     this.updateStatus(`Looking at ${name}`);
+  }
+
+  // Smoothly fly the camera to a constellation (Stellarium-style jump)
+  navigateToConstellation(name) {
+    if (!this.constellations || !this.constellations.length) {
+      console.warn("No constellations loaded");
+      return;
+    }
+
+    const constellation = this.constellations.find(
+      (c) => c.name && c.name.toLowerCase() === name.toLowerCase()
+    );
+    if (!constellation || !constellation.lines || !constellation.lines.length) {
+      console.warn(`Constellation "${name}" not found`);
+      return;
+    }
+
+    // Prefer a true 3D centroid built from anchored bright stars
+    let centerPos = null;
+    if (this.brightStarCatalog && this.brightStarCatalog.length > 0) {
+      const acc = new THREE.Vector3();
+      let count = 0;
+      for (const segment of constellation.lines) {
+        if (!Array.isArray(segment) || segment.length < 4) continue;
+        const [ra1, dec1, ra2, dec2] = segment;
+        const p1 = this.findNearestBrightStarPosition(ra1, dec1);
+        const p2 = this.findNearestBrightStarPosition(ra2, dec2);
+        if (p1) {
+          acc.add(p1);
+          count++;
+        }
+        if (p2) {
+          acc.add(p2);
+          count++;
+        }
+      }
+      if (count > 0) {
+        acc.multiplyScalar(1 / count);
+        centerPos = acc;
+      }
+    }
+
+    // Fallback: use RA/Dec center at a fixed distance shell
+    if (!centerPos) {
+      let totalRA = 0;
+      let totalDec = 0;
+      let count = 0;
+      for (const segment of constellation.lines) {
+        if (!Array.isArray(segment) || segment.length < 4) continue;
+        const [ra1, dec1, ra2, dec2] = segment;
+        totalRA += ra1 + ra2;
+        totalDec += dec1 + dec2;
+        count += 2;
+      }
+      if (!count) {
+        console.warn(`Constellation "${name}" has no valid segments`);
+        return;
+      }
+      const centerRA = totalRA / count;
+      const centerDec = totalDec / count;
+      // Place centroid on a shell well inside the bright-star field
+      const shellDistance = 400;
+      centerPos = this.equatorialToPosition(centerRA, centerDec, shellDistance);
+    }
+
+    // Reuse star navigation system with a synthetic star at the centroid
+    const pseudoStar = { x: centerPos.x, y: centerPos.y, z: centerPos.z };
+    this.navigateToStar(pseudoStar);
+    this.updateStatus(`Jumping to ${constellation.name}`);
   }
 
   // Load stars visible in current view
@@ -1230,7 +1486,6 @@ class CosmicWebViewer {
     if (this.points) {
       this.scene.remove(this.points);
       if (this.points.geometry) this.points.geometry.dispose();
-      if (this.points.material) this.points.material.dispose();
       this.points = null;
     }
 
@@ -1417,9 +1672,62 @@ class CosmicWebViewer {
       }
     }
 
-    // Keep constellation lines centered on camera (sky dome effect)
+    // Keep constellation lines centered on camera in overlay mode;
+    // in world-space mode they sit fixed among the stars.
     if (this.constellationLines) {
-      this.constellationLines.position.copy(this.camera.position);
+      if (!this.constellationsWorldSpace) {
+        this.constellationLines.position.copy(this.camera.position);
+      } else {
+        this.constellationLines.position.set(0, 0, 0);
+      }
+
+      // Handle brightness + color flash when toggled on
+      if (this.constellationMaterial) {
+        if (this.showConstellations && this.constellationFlashTime) {
+          const elapsed = now - this.constellationFlashTime;
+          const t = Math.min(elapsed / this.constellationFlashDuration, 1);
+
+          // Ease-out opacity: start very bright, fade back to base
+          const extra = (1 - t) * 1.0; // up to +1.0 opacity boost
+          this.constellationMaterial.opacity =
+            this.constellationBaseOpacity + extra;
+
+          // Color flash: start white, fade back to cyan
+          this.constellationMaterial.color.lerpColors(
+            this.constellationFlashColor,
+            this.constellationBaseColor,
+            t
+          );
+
+          if (t >= 1) {
+            // Flash finished
+            this.constellationFlashTime = 0;
+            this.constellationMaterial.opacity = this.constellationBaseOpacity;
+            this.constellationMaterial.color.copy(this.constellationBaseColor);
+          }
+        } else {
+          // Ensure state is sane when flash not active
+          this.constellationMaterial.opacity = this.showConstellations
+            ? this.constellationBaseOpacity
+            : 0.0;
+          this.constellationMaterial.color.copy(this.constellationBaseColor);
+        }
+      }
+    }
+
+    // Advance simulated time for motion when enabled
+    if (this.timeWarpEnabled && this.catalogLoaded) {
+      this.elapsedSimYears += this.timeWarpSpeedYearsPerSecond * delta;
+      this.applyProperMotionToStars(this.elapsedSimYears);
+    }
+
+    // Parallax walkthrough: auto-move camera forward along a fixed direction
+    if (this.parallaxModeEnabled && !this.isNavigating) {
+      // Ensure direction is normalized
+      const dir = this.parallaxDirection.clone().normalize();
+      const speed =
+        this.parallaxSpeedBase * this.parallaxSpeedMultiplier * this.settings.speedMultiplier;
+      this.camera.position.addScaledVector(dir, speed * delta);
     }
 
     // VIDEO GAME STYLE: Update navigation FIRST
@@ -1625,6 +1933,113 @@ class CosmicWebViewer {
     console.log(message);
   }
 
+  // Reset camera and motion state to a safe, known-good default
+  resetCamera() {
+    // Stop any ongoing navigation / inertia
+    this.isNavigating = false;
+    this.navigationTarget = null;
+    if (this.currentVelocity) this.currentVelocity.set(0, 0, 0);
+    if (this.targetVelocity) this.targetVelocity.set(0, 0, 0);
+
+    // Reset position & orientation back to curated starting vantage point
+    this.camera.position.set(-1407.2, 13.6, 36.0);
+    this.camera.rotation.set(0, 0, 0);
+    this.camera.lookAt(0, 0, 0);
+
+    // Sync all rotation state used by smooth controls
+    this.rotationX = this.camera.rotation.x;
+    this.rotationY = this.camera.rotation.y;
+    this.targetRotationX = this.rotationX;
+    this.targetRotationY = this.rotationY;
+
+    // Reset HUD tracking for velocity calculations
+    if (this.lastCameraPosition) {
+      this.lastCameraPosition.copy(this.camera.position);
+    }
+
+    this.updateStatus("Camera reset to starting view");
+    console.log(
+      `🏠 Camera reset: pos=(${this.camera.position.x.toFixed(1)}, ${this.camera.position.y.toFixed(1)}, ${this.camera.position.z.toFixed(1)})`
+    );
+  }
+
+  // Recompute star positions for a given simulated time based on proper motion
+  applyProperMotionToStars(simYears) {
+    if (!this.galaxyData || !this.galaxyData.length || !this.points) return;
+
+    const posAttr = this.points.geometry.getAttribute("position");
+    if (!posAttr) return;
+    const array = posAttr.array;
+
+    for (let i = 0; i < this.galaxyData.length; i++) {
+      const star = this.galaxyData[i];
+      if (star.ra == null || star.dec == null) continue;
+
+      const pmra = star.pmra_mas_yr || 0;   // mas/yr
+      const pmdec = star.pmdec_mas_yr || 0; // mas/yr
+
+      // Convert proper motion from mas/yr to degrees over simYears
+      const draDeg = (pmra * simYears) / (1000.0 * 3600.0);
+      const ddecDeg = (pmdec * simYears) / (1000.0 * 3600.0);
+
+      const newRa = star.ra + draDeg;
+      const newDec = star.dec + ddecDeg;
+      const distance = star.distance || 1000;
+      const pos = this.equatorialToPosition(newRa, newDec, distance);
+
+      const idx = i * 3;
+      array[idx] = pos.x;
+      array[idx + 1] = pos.y;
+      array[idx + 2] = pos.z;
+    }
+
+    posAttr.needsUpdate = true;
+  }
+
+  // Compute a point the camera is currently looking at (in front of it)
+  getCameraLookTarget(distance = 200) {
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    return this.camera.position.clone().add(dir.multiplyScalar(distance));
+  }
+
+  // Save current camera view into a slot (0-2)
+  saveView(slotIndex) {
+    if (slotIndex < 0 || slotIndex >= this.savedViews.length) return;
+    const position = this.camera.position.clone();
+    const target = this.getCameraLookTarget();
+    const fov = this.camera.fov;
+    this.savedViews[slotIndex] = { position, target, fov };
+    this.updateStatus(`Saved view ${slotIndex + 1}`);
+    console.log(`💾 Saved view ${slotIndex + 1}:`, this.savedViews[slotIndex]);
+  }
+
+  // Smoothly fly back to a saved view slot
+  loadView(slotIndex) {
+    if (slotIndex < 0 || slotIndex >= this.savedViews.length) return;
+    const view = this.savedViews[slotIndex];
+    if (!view) {
+      this.updateStatus(`No view saved in slot ${slotIndex + 1}`);
+      return;
+    }
+
+    // Restore FOV immediately
+    this.camera.fov = view.fov;
+    this.camera.updateProjectionMatrix();
+
+    // Use navigation system to fly to saved position
+    this.navigationTarget = {
+      position: view.position.clone(),
+      lookAt: view.target.clone(),
+    };
+    this.isNavigating = true;
+    if (this.currentVelocity) this.currentVelocity.set(0, 0, 0);
+    if (this.targetVelocity) this.targetVelocity.set(0, 0, 0);
+
+    this.updateStatus(`Returning to view ${slotIndex + 1}`);
+    console.log(`📍 Loading view ${slotIndex + 1}`, view);
+  }
+
   toggleConstellations() {
     this.showConstellations = !this.showConstellations;
     if (this.constellationLines) {
@@ -1638,10 +2053,11 @@ class CosmicWebViewer {
         textSpan.textContent = this.showConstellations ? 'Hide Lines' : 'Constellations';
       }
     }
-    
-    // When turning on, look toward Orion so user can see the lines
-    if (this.showConstellations && this.constellations.length > 0) {
-      this.lookAtConstellation('Orion');
+
+    // When turning ON, trigger a short brightness flash so lines are obvious
+    if (this.showConstellations && this.constellationMaterial) {
+      this.constellationFlashTime = performance.now();
+      this.constellationMaterial.opacity = 1.0; // start bright
     }
     console.log(
       `Constellations ${this.showConstellations ? "visible" : "hidden"}`
@@ -2663,15 +3079,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const resetBtn = document.getElementById("resetCamera");
   if (resetBtn) {
     resetBtn.addEventListener("click", () => {
-      viewer.camera.position.set(0, 0, 0);
-      viewer.camera.rotation.set(0, 0, 0);
-      viewer.rotationX = 0;
-      viewer.rotationY = 0;
-      viewer.targetRotationX = 0;
-      viewer.targetRotationY = 0;
-      viewer.currentVelocity.set(0, 0, 0);
-      viewer.camera.lookAt(100, 0, 0);
-      console.log("🏠 Camera reset to origin");
+      viewer.resetCamera();
     });
   }
 
@@ -2679,18 +3087,6 @@ window.addEventListener("DOMContentLoaded", () => {
   const helpBtn = document.getElementById("helpBtn");
   if (helpBtn) {
     helpBtn.addEventListener("click", () => viewer.toggleHelpModal());
-  }
-
-  // Wire up constellation toggle button
-  const constellationBtn = document.getElementById("toggleConstellations");
-  if (constellationBtn) {
-    constellationBtn.addEventListener("click", () =>
-      viewer.toggleConstellations()
-    );
-    // Set initial active state if constellations are visible by default
-    if (viewer.showConstellations) {
-      constellationBtn.classList.add('active');
-    }
   }
 
   // Wire up star labels toggle button
@@ -2708,6 +3104,21 @@ window.addEventListener("DOMContentLoaded", () => {
   if (solarSystemBtn) {
     solarSystemBtn.addEventListener("click", () => viewer.toggleSolarSystem());
   }
+
+  // Wire up Saved Views buttons
+  const saveView1 = document.getElementById('saveView1');
+  const loadView1 = document.getElementById('loadView1');
+  const saveView2 = document.getElementById('saveView2');
+  const loadView2 = document.getElementById('loadView2');
+  const saveView3 = document.getElementById('saveView3');
+  const loadView3 = document.getElementById('loadView3');
+
+  if (saveView1) saveView1.addEventListener('click', () => viewer.saveView(0));
+  if (loadView1) loadView1.addEventListener('click', () => viewer.loadView(0));
+  if (saveView2) saveView2.addEventListener('click', () => viewer.saveView(1));
+  if (loadView2) loadView2.addEventListener('click', () => viewer.loadView(1));
+  if (saveView3) saveView3.addEventListener('click', () => viewer.saveView(2));
+  if (loadView3) loadView3.addEventListener('click', () => viewer.loadView(2));
 
   // Wire up HUD minimize button
   const minimizeBtn = document.getElementById("minimizeBtn");
@@ -2747,6 +3158,10 @@ window.addEventListener("DOMContentLoaded", () => {
   const intensityValue = document.getElementById('intensityValue');
   const navSpeedControl = document.getElementById('navSpeedControl');
   const navSpeedValue = document.getElementById('navSpeedValue');
+  const timeWarpSpeed = document.getElementById('timeWarpSpeed');
+  const timeWarpSpeedValue = document.getElementById('timeWarpSpeedValue');
+  const parallaxSpeedControl = document.getElementById('parallaxSpeed');
+  const parallaxSpeedValue = document.getElementById('parallaxSpeedValue');
 
   // Initialize UI from viewer settings
   if (fovControl && fovValue) {
@@ -2791,6 +3206,86 @@ window.addEventListener("DOMContentLoaded", () => {
       viewer.navigationSpeed = viewer.baseNavigationSpeed * val;
       navSpeedValue.textContent = `${val.toFixed(1)}×`;
     });
+  }
+
+  // Parallax speed slider (multiplier for walkthrough speed)
+  if (parallaxSpeedControl && parallaxSpeedValue) {
+    parallaxSpeedControl.value = viewer.parallaxSpeedMultiplier.toString();
+    const updateParallaxLabel = (v) => {
+      parallaxSpeedValue.textContent = `${v.toFixed(1)}×`;
+    };
+    updateParallaxLabel(viewer.parallaxSpeedMultiplier);
+
+    parallaxSpeedControl.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      viewer.parallaxSpeedMultiplier = val;
+      updateParallaxLabel(val);
+    });
+  }
+
+  // Time warp speed slider (years of sky motion per real second)
+  if (timeWarpSpeed && timeWarpSpeedValue) {
+    timeWarpSpeed.value = viewer.timeWarpSpeedYearsPerSecond.toString();
+    const updateTimeWarpLabel = (v) => {
+      const k = v / 1000;
+      timeWarpSpeedValue.textContent = `${k.toFixed(1)}k yr/s`;
+    };
+    updateTimeWarpLabel(viewer.timeWarpSpeedYearsPerSecond);
+
+    timeWarpSpeed.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      viewer.timeWarpSpeedYearsPerSecond = val;
+      updateTimeWarpLabel(val);
+    });
+  }
+
+  // Time warp toggle
+  const timeWarpToggle = document.getElementById('timeWarpToggle');
+  if (timeWarpToggle) {
+    timeWarpToggle.addEventListener('click', () => {
+      viewer.timeWarpEnabled = !viewer.timeWarpEnabled;
+      if (!viewer.timeWarpEnabled) {
+        viewer.elapsedSimYears = 0;
+        // Reset star positions back to their catalog positions
+        if (viewer.catalogLoaded) {
+          viewer.applyProperMotionToStars(0);
+        }
+      }
+      timeWarpToggle.textContent = viewer.timeWarpEnabled ? 'Time Warp: On' : 'Time Warp: Off';
+      viewer.updateStatus(viewer.timeWarpEnabled ? 'Time warp enabled (exaggerated proper motion)' : 'Time warp disabled');
+    });
+  }
+
+  // Parallax walkthrough toggle
+  const parallaxToggle = document.getElementById('parallaxToggle');
+  if (parallaxToggle) {
+    parallaxToggle.addEventListener('click', () => {
+      viewer.parallaxModeEnabled = !viewer.parallaxModeEnabled;
+
+      if (viewer.parallaxModeEnabled) {
+        // Lock in the current forward direction for the walkthrough path
+        const fwd = new THREE.Vector3();
+        viewer.camera.getWorldDirection(fwd);
+        viewer.parallaxDirection.copy(fwd.normalize());
+        viewer.updateStatus('Parallax walkthrough: drifting forward through the stars');
+      } else {
+        viewer.updateStatus('Parallax walkthrough disabled');
+      }
+
+      parallaxToggle.textContent = viewer.parallaxModeEnabled ? 'Parallax: On' : 'Parallax: Off';
+    });
+  }
+
+  // Collapsible VISUAL TUNING panel
+  const tuningPanel = document.getElementById('tuningPanel');
+  if (tuningPanel) {
+    const tuningTitle = tuningPanel.querySelector('.tuning-toggle');
+    const tuningContent = tuningPanel.querySelector('.tuning-content');
+    if (tuningTitle && tuningContent) {
+      tuningTitle.addEventListener('click', () => {
+        tuningContent.classList.toggle('collapsed');
+      });
+    }
   }
 
   // ========== Frame Preset Buttons ==========
