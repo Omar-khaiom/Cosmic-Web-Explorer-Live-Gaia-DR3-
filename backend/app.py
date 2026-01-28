@@ -132,6 +132,18 @@ for viewer_path in viewer_paths:
 else:
     logger.warning("⚠️ Viewer directory not found - static files not mounted")
 
+# Mount data directory for constellations.json etc.
+data_paths = [
+    Path(__file__).parent.parent / "data",  # Local dev: d:\space\data
+    Path("/app/data"),                        # Docker: /app/data
+]
+
+for data_path in data_paths:
+    if data_path.exists():
+        app.mount("/data", StaticFiles(directory=str(data_path)), name="data")
+        logger.info(f"📁 Data files mounted from: {data_path}")
+        break
+
 
 if __name__ == "__main__":
     import uvicorn

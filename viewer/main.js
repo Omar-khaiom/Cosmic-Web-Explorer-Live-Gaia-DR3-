@@ -51,20 +51,47 @@ async function fetchJSONWithTimeout(url, { timeoutMs = 8000, retry = 1 } = {}) {
   }
 }
 
+// Loading overlay control
+const LoadingUI = (() => {
+  const overlay = document.getElementById('loading-overlay');
+  const text = document.getElementById('loading-text');
+  const progress = document.getElementById('loading-progress');
+  
+  function setProgress(msg) {
+    if (progress) progress.textContent = msg;
+  }
+  
+  function setText(msg) {
+    if (text) text.textContent = msg;
+  }
+  
+  function hide() {
+    if (overlay) {
+      overlay.classList.add('hidden');
+      setTimeout(() => { overlay.style.display = 'none'; }, 500);
+    }
+  }
+  
+  return { setProgress, setText, hide };
+})();
+
 async function fetchBrightCatalogWithFallback(magLimit = 7.0) {
   try {
     StatusUI.show(`🌟 Fetching bright catalog (mag < ${magLimit})…`);
+    LoadingUI.setProgress('Downloading star catalog...');
     const data = await fetchJSONWithTimeout(
       `${API_BASE}/api/stars/bright-catalog?mag_limit=${magLimit}`,
       { timeoutMs: 8000, retry: 1 }
     );
     console.log(`✅ Loaded ${data.count || data.length} stars from backend`);
     StatusUI.show(`✅ Loaded ${(data.count || data.length).toLocaleString()} bright stars from server`);
+    LoadingUI.setProgress(`${(data.count || data.length).toLocaleString()} stars loaded`);
     setTimeout(() => StatusUI.hide(), 2000);
     return data;
   } catch (e) {
     console.warn('⚠️ Backend unavailable, loading offline catalog:', e.message);
     StatusUI.show('⚠️ Backend unavailable. Loading offline catalog…', 'warn');
+    LoadingUI.setProgress('Loading offline catalog...');
     
     try {
       const res = await fetch('../data/bright_catalog.json');
@@ -72,11 +99,13 @@ async function fetchBrightCatalogWithFallback(magLimit = 7.0) {
       const data = await res.json();
       console.log(`📦 Loaded ${data.length} stars from offline catalog`);
       StatusUI.show(`📦 Offline mode: ${data.length.toLocaleString()} stars loaded`, 'warn');
+      LoadingUI.setProgress(`${data.length.toLocaleString()} stars (offline)`);
       setTimeout(() => StatusUI.hide(), 2500);
       return { stars: data, count: data.length, cached: false, offline: true };
     } catch (fallbackErr) {
       console.error('❌ Failed to load offline catalog:', fallbackErr);
       StatusUI.show('❌ Failed to load star catalog. Check backend or offline data.', 'error');
+      LoadingUI.setProgress('Failed to load catalog');
       throw fallbackErr;
     }
   }
@@ -221,6 +250,7 @@ class CosmicWebViewer {
     this.setupRenderer();
     this.setupControls();
     this.setupLabelContainer();
+    this.setupKeyboardShortcuts();
 
     // Load famous star names
     await this.loadFamousStars();
@@ -228,15 +258,87 @@ class CosmicWebViewer {
     // Load solar system data
     await this.loadSolarSystem();
 
+    // Load constellation overlays
+    await this.loadConstellations();
+
     // Load 20K star catalog with real 3D positions
     await this.loadBrightCatalog();
 
     this.updateStatus(
-      "Ready! Exploring 20K stars in TRUE 3D. WASD to move, drag to look."
+      "Ready! Exploring 20K stars in TRUE 3D. WASD to move, drag to look. Press ? for help."
     );
     this.animate();
 
     console.log("✅ 3D Space Explorer ready with 20K Gaia stars!");
+  }
+
+  // Setup keyboard shortcuts listener
+  setupKeyboardShortcuts() {
+    window.addEventListener('keydown', (e) => {
+      // ? or / to show help
+      if (e.key === '?' || (e.key === '/' && !e.target.matches('input, textarea'))) {
+        e.preventDefault();
+        this.toggleHelpModal();
+      }
+      // Escape to close modals
+      if (e.key === 'Escape') {
+        this.closeHelpModal();
+      }
+    });
+  }
+
+  toggleHelpModal() {
+    const existing = document.getElementById('help-modal');
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    this.showHelpModal();
+  }
+
+  closeHelpModal() {
+    const modal = document.getElementById('help-modal');
+    if (modal) modal.remove();
+  }
+
+  showHelpModal() {
+    const modal = document.createElement('div');
+    modal.id = 'help-modal';
+    modal.innerHTML = `
+      <div class="help-backdrop"></div>
+      <div class="help-content">
+        <div class="help-header">
+          <h2>🚀 Controls & Shortcuts</h2>
+          <button class="help-close" onclick="document.getElementById('help-modal').remove()">×</button>
+        </div>
+        <div class="help-body">
+          <div class="help-section">
+            <h3>🎮 Navigation</h3>
+            <div class="help-row"><kbd>W</kbd><span>Move forward</span></div>
+            <div class="help-row"><kbd>S</kbd><span>Move backward</span></div>
+            <div class="help-row"><kbd>A</kbd><span>Strafe left</span></div>
+            <div class="help-row"><kbd>D</kbd><span>Strafe right</span></div>
+            <div class="help-row"><kbd>Space</kbd>+<kbd>W</kbd><span>Move up</span></div>
+            <div class="help-row"><kbd>Space</kbd>+<kbd>S</kbd><span>Move down</span></div>
+            <div class="help-row"><kbd>Q</kbd>/<kbd>E</kbd><span>Move up/down</span></div>
+            <div class="help-row"><kbd>Shift</kbd><span>Speed boost (3×)</span></div>
+          </div>
+          <div class="help-section">
+            <h3>🖱️ Mouse / Touch</h3>
+            <div class="help-row"><span>Drag</span><span>Rotate view</span></div>
+            <div class="help-row"><span>Scroll</span><span>Zoom in/out</span></div>
+            <div class="help-row"><span>Click star</span><span>Navigate & show info</span></div>
+            <div class="help-row"><span>Pinch</span><span>Zoom (touch)</span></div>
+          </div>
+          <div class="help-section">
+            <h3>⌨️ Shortcuts</h3>
+            <div class="help-row"><kbd>?</kbd><span>Toggle this help</span></div>
+            <div class="help-row"><kbd>Esc</kbd><span>Close panels</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
   }
 
   // Load full-sky bright star catalog
@@ -275,9 +377,16 @@ class CosmicWebViewer {
       this.updateStatus(
         `Viewing ${this.loadedStarCount} stars from Gaia DR3 (TRUE 3D with real distances)`
       );
+      
+      // Hide loading overlay
+      LoadingUI.setText('Welcome to the cosmos!');
+      setTimeout(() => LoadingUI.hide(), 300);
+      
     } catch (error) {
       console.error("❌ Failed to load star catalog:", error);
       this.updateStatus(`ERROR: ${error.message}. Check backend is running.`);
+      LoadingUI.setProgress('Error loading stars');
+      setTimeout(() => LoadingUI.hide(), 1500);
     }
   }
 
@@ -318,13 +427,21 @@ class CosmicWebViewer {
     let mouseDownPos = { x: 0, y: 0 };
     let isDragging = false; // Track if user is actually dragging
 
+    // Rotation inertia for smooth feel
+    this.rotationVelocityX = 0;
+    this.rotationVelocityY = 0;
+    this.rotationDamping = 0.92; // How quickly rotation slows (0.9-0.98)
+
     canvas.addEventListener("mousedown", (e) => {
       this.isMouseDown = true;
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
       mouseDownTime = Date.now();
       mouseDownPos = { x: e.clientX, y: e.clientY };
-      isDragging = false; // Reset drag flag
+      isDragging = false;
+      // Stop inertia when user grabs
+      this.rotationVelocityX = 0;
+      this.rotationVelocityY = 0;
       canvas.style.cursor = "grabbing";
     });
 
@@ -344,23 +461,24 @@ class CosmicWebViewer {
       canvas.style.cursor = "grab";
     });
     
-    // Also handle mouse leave to reset cursor
-    canvas.addEventListener("mouseleave", () => {
+    // Global safety: reset mouse state when focus lost or mouse leaves
+    const resetMouseState = (keepInertia = false) => {
       this.isMouseDown = false;
       isDragging = false;
-      canvas.style.cursor = "grab";
-    });
-
-    // Global safety: if mouseup happens outside the canvas/window, ensure state resets
-    const resetMouseState = () => {
-      this.isMouseDown = false;
-      isDragging = false;
+      if (!keepInertia) {
+        this.rotationVelocityX = 0;
+        this.rotationVelocityY = 0;
+      }
       if (canvas && canvas.style) canvas.style.cursor = "grab";
     };
-    window.addEventListener("mouseup", resetMouseState);
-    window.addEventListener("pointerup", resetMouseState);
-    window.addEventListener("blur", resetMouseState);
-    window.addEventListener("mouseleave", resetMouseState);
+    
+    // Document-level listeners for robust mouse tracking
+    document.addEventListener("mouseup", () => resetMouseState(true));
+    document.addEventListener("pointerup", () => resetMouseState(true));
+    window.addEventListener("blur", () => resetMouseState(false));
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) resetMouseState(false);
+    });
 
     canvas.addEventListener("mousemove", (e) => {
       if (!this.isMouseDown) return;
@@ -374,13 +492,19 @@ class CosmicWebViewer {
         isDragging = true;
       }
       
-      // Only rotate camera if we're actually dragging
       if (!isDragging) return;
 
-      // Accumulate target rotation (smooth)
+      // Accumulate target rotation with velocity for inertia
       const rotateSpeed = 0.002;
-      this.targetRotationX += -deltaY * rotateSpeed;
-      this.targetRotationY += -deltaX * rotateSpeed;
+      const velX = -deltaY * rotateSpeed;
+      const velY = -deltaX * rotateSpeed;
+      
+      this.targetRotationX += velX;
+      this.targetRotationY += velY;
+      
+      // Store velocity for inertia on release
+      this.rotationVelocityX = velX * 0.5;
+      this.rotationVelocityY = velY * 0.5;
 
       // Clamp pitch to prevent camera flipping
       this.targetRotationX = Math.max(
@@ -388,12 +512,124 @@ class CosmicWebViewer {
         Math.min(Math.PI / 2, this.targetRotationX)
       );
 
-      // Normalize to prevent drift
       this.camera.quaternion.normalize();
-
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
     });
+
+    // ========== TOUCH CONTROLS (Mobile) ==========
+    let touchStartTime = 0;
+    let touchStartPos = { x: 0, y: 0 };
+    let lastTouchDistance = 0;
+    let lastTouchCenter = { x: 0, y: 0 };
+    let isTouchDragging = false;
+    let touchCount = 0;
+
+    canvas.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      touchCount = e.touches.length;
+      touchStartTime = Date.now();
+      
+      // Stop inertia on touch
+      this.rotationVelocityX = 0;
+      this.rotationVelocityY = 0;
+      
+      if (touchCount === 1) {
+        // Single finger - rotation
+        const touch = e.touches[0];
+        this.mouseX = touch.clientX;
+        this.mouseY = touch.clientY;
+        touchStartPos = { x: touch.clientX, y: touch.clientY };
+        isTouchDragging = false;
+      } else if (touchCount === 2) {
+        // Two fingers - pinch zoom
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
+        lastTouchCenter = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+      }
+    }, { passive: false });
+
+    canvas.addEventListener("touchmove", (e) => {
+      e.preventDefault();
+      
+      if (e.touches.length === 1 && touchCount === 1) {
+        // Single finger drag - rotate view
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - this.mouseX;
+        const deltaY = touch.clientY - this.mouseY;
+        
+        const totalMovement = Math.abs(touch.clientX - touchStartPos.x) + Math.abs(touch.clientY - touchStartPos.y);
+        if (totalMovement > 10) {
+          isTouchDragging = true;
+        }
+        
+        if (isTouchDragging) {
+          const rotateSpeed = 0.003; // Slightly faster for touch
+          const velX = -deltaY * rotateSpeed;
+          const velY = -deltaX * rotateSpeed;
+          
+          this.targetRotationX += velX;
+          this.targetRotationY += velY;
+          
+          this.rotationVelocityX = velX * 0.4;
+          this.rotationVelocityY = velY * 0.4;
+          
+          this.targetRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.targetRotationX));
+        }
+        
+        this.mouseX = touch.clientX;
+        this.mouseY = touch.clientY;
+        
+      } else if (e.touches.length === 2) {
+        // Two finger pinch - zoom in/out
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (lastTouchDistance > 0) {
+          const scale = distance / lastTouchDistance;
+          const forward = new THREE.Vector3();
+          this.camera.getWorldDirection(forward);
+          
+          // Zoom speed based on pinch delta
+          const zoomAmount = (1 - scale) * 50;
+          this.camera.position.add(forward.multiplyScalar(zoomAmount));
+          
+          // Prevent going through origin
+          if (this.camera.position.length() < 0.1) {
+            this.camera.position.normalize().multiplyScalar(0.1);
+          }
+        }
+        
+        lastTouchDistance = distance;
+        isTouchDragging = true;
+      }
+    }, { passive: false });
+
+    canvas.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      
+      // Check for tap (click on star)
+      if (touchCount === 1 && !isTouchDragging) {
+        const clickDuration = Date.now() - touchStartTime;
+        if (clickDuration < 300) {
+          // Simulate click at touch position
+          this.handleStarClick({ 
+            clientX: touchStartPos.x, 
+            clientY: touchStartPos.y,
+            button: 0 
+          });
+        }
+      }
+      
+      touchCount = e.touches.length;
+      lastTouchDistance = 0;
+      isTouchDragging = false;
+    }, { passive: false });
 
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
@@ -428,8 +664,21 @@ class CosmicWebViewer {
     });
   }
 
-  // Smooth camera rotation with lerp
+  // Smooth camera rotation with lerp and inertia
   updateSmoothRotation() {
+    // Apply rotation inertia when not dragging
+    if (!this.isMouseDown && (Math.abs(this.rotationVelocityX) > 0.00001 || Math.abs(this.rotationVelocityY) > 0.00001)) {
+      this.targetRotationX += this.rotationVelocityX;
+      this.targetRotationY += this.rotationVelocityY;
+      
+      // Dampen velocity
+      this.rotationVelocityX *= this.rotationDamping;
+      this.rotationVelocityY *= this.rotationDamping;
+      
+      // Clamp pitch
+      this.targetRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.targetRotationX));
+    }
+    
     // Smoothly interpolate current rotation toward target
     this.rotationX +=
       (this.targetRotationX - this.rotationX) * this.rotationSmoothing;
@@ -594,19 +843,28 @@ class CosmicWebViewer {
   // Load constellation data
   async loadConstellations() {
     try {
-      const response = await fetch("/data/constellations.json");
+      // Try multiple paths for compatibility
+      let response = await fetch("../data/constellations.json");
+      if (!response.ok) {
+        response = await fetch("/data/constellations.json");
+      }
+      if (!response.ok) throw new Error('Constellation data not found');
+      
       const data = await response.json();
-      this.constellations = data.constellations;
-      this.brightStars = data.brightStars;
+      this.constellations = data.constellations || [];
+      this.brightStars = data.brightStars || [];
 
       // Create constellation line geometry
-      this.createConstellationLines();
+      if (this.constellations.length > 0) {
+        this.createConstellationLines();
+      }
 
       console.log(
-        `✅ Loaded ${this.constellations.length} constellations and ${this.brightStars.length} bright stars`
+        `✅ Loaded ${this.constellations.length} constellations`
       );
     } catch (error) {
-      console.warn("⚠️ Could not load constellation data:", error);
+      console.warn("⚠️ Could not load constellation data:", error.message);
+      // Not critical - continue without constellations
     }
   }
 
@@ -1206,6 +1464,21 @@ class CosmicWebViewer {
     this.currentFrame = frame;
     this.updatePlaneOverlay();
     this.alignCameraToCurrentFrame();
+    this.updateFrameButtonStates();
+  }
+  
+  updateFrameButtonStates() {
+    const btns = { EQ: 'viewEq', EP: 'viewEp', GAL: 'viewGal' };
+    Object.entries(btns).forEach(([frame, id]) => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        if (frame === this.currentFrame) {
+          btn.classList.add('frame-btn-active');
+        } else {
+          btn.classList.remove('frame-btn-active');
+        }
+      }
+    });
   }
 
   updatePlaneOverlay() {
@@ -1617,21 +1890,24 @@ class CosmicWebViewer {
       const startPos = this.camera.position.clone();
       const targetPos = new THREE.Vector3(star.x, star.y, star.z);
       
+      // Calculate distance to target for scaling
+      const distanceToTarget = startPos.distanceTo(targetPos);
+      
       // Calculate EXACT direction from camera TO star (the travel vector)
       const travelDirection = new THREE.Vector3();
-      travelDirection.subVectors(targetPos, startPos); // target - start = direction
-      travelDirection.normalize(); // Make it unit length
+      travelDirection.subVectors(targetPos, startPos);
+      travelDirection.normalize();
       
-      // PULL BACK: Move camera in OPPOSITE direction (away from star)
-      // Like a spaceship building tension before the jump
-      const pullBackDistance = 5; // Bigger pullback (5 parsecs)
+      // PULL BACK: Scale with distance (5% of distance, min 3pc, max 20pc)
+      const pullBackDistance = Math.min(20, Math.max(3, distanceToTarget * 0.05));
       const pullBackVector = travelDirection.clone().multiplyScalar(-pullBackDistance);
       const pullBackPos = startPos.clone().add(pullBackVector);
       
-      console.log('🚀 Pull-back vector:', pullBackVector);
+      // Duration scales with distance too (faster for short trips)
+      const pullBackDuration = Math.min(1500, Math.max(600, distanceToTarget * 2));
       
-      // Phase 1: SLOW pull-back animation (1.2 seconds - much more noticeable)
-      const pullBackDuration = 1200;
+      console.log(`🚀 Tour: Pull-back ${pullBackDistance.toFixed(1)}pc over ${pullBackDuration}ms`);
+      
       const pullBackStart = performance.now();
       
       const pullBackAnimation = () => {
@@ -1642,16 +1918,18 @@ class CosmicWebViewer {
         const eased = 1 - Math.pow(1 - progress, 3);
         
         this.camera.position.lerpVectors(startPos, pullBackPos, eased);
-        this.camera.lookAt(targetPos); // Keep looking at destination
+        this.camera.lookAt(targetPos);
         
         if (progress < 1) {
           requestAnimationFrame(pullBackAnimation);
         } else {
-          // Phase 2: Brief pause (0.3s) - like charging up
+          // Phase 2: Brief pause (scales with pull-back)
+          const pauseDuration = Math.min(400, pullBackDuration * 0.25);
           setTimeout(() => {
-            // Phase 3: LAUNCH forward at reduced speed
+            // Phase 3: LAUNCH forward - speed scales with distance
             const originalSpeed = this.navigationSpeed;
-            this.navigationSpeed = 25; // Even slower for smooth feel
+            const travelSpeed = Math.min(150, Math.max(20, distanceToTarget * 0.3));
+            this.navigationSpeed = travelSpeed;
             
             this.navigateToStar(star);
             
@@ -1659,7 +1937,8 @@ class CosmicWebViewer {
               this.navigationSpeed = originalSpeed;
             }, 100);
             
-            // Phase 4: Show overlay during travel
+            // Phase 4: Show overlay - timing scales with travel time
+            const overlayDelay = Math.min(3000, Math.max(1000, distanceToTarget * 10));
             setTimeout(() => {
               const overlay = document.getElementById('tourOverlay');
               document.getElementById('tourTitle').textContent = stop.name;
@@ -1667,8 +1946,8 @@ class CosmicWebViewer {
               overlay.style.display = 'block';
               overlay.style.opacity = '0';
               setTimeout(() => { overlay.style.opacity = '1'; }, 20);
-            }, 2000);
-          }, 300); // Pause before launch
+            }, overlayDelay);
+          }, pauseDuration);
         }
       };
       
@@ -2433,4 +2712,44 @@ window.addEventListener("DOMContentLoaded", () => {
   if (viewEq) viewEq.addEventListener('click', () => viewer.setFrame('EQ'));
   if (viewEp) viewEp.addEventListener('click', () => viewer.setFrame('EP'));
   if (viewGal) viewGal.addEventListener('click', () => viewer.setFrame('GAL'));
+  
+  // Set initial active state (EQ is default)
+  viewer.updateFrameButtonStates();
+  
+  // ========== Mobile HUD Toggle ==========
+  const hudHeader = document.querySelector('.hud-header');
+  if (hudHeader && window.innerWidth <= 768) {
+    hudHeader.addEventListener('click', (e) => {
+      // Don't toggle if clicking minimize button
+      if (e.target.classList.contains('minimize-btn')) return;
+      hud.classList.toggle('expanded');
+    });
+  }
+  
+  // ========== Orientation Hint for Mobile ==========
+  if (window.innerWidth <= 768 && window.innerHeight > window.innerWidth) {
+    const hint = document.createElement('div');
+    hint.id = 'orientation-hint';
+    hint.innerHTML = '📱 Rotate device to landscape for best experience';
+    hint.style.cssText = `
+      position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
+      background: rgba(255, 193, 7, 0.9); color: #000; padding: 8px 16px;
+      border-radius: 8px; font-size: 12px; z-index: 1000;
+      animation: fadeInOut 5s ease forwards;
+    `;
+    document.body.appendChild(hint);
+    setTimeout(() => hint.remove(), 5000);
+  }
 });
+
+// Fade animation for hint
+const fadeStyle = document.createElement('style');
+fadeStyle.textContent = `
+  @keyframes fadeInOut {
+    0% { opacity: 0; }
+    10% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+`;
+document.head.appendChild(fadeStyle);
