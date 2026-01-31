@@ -48,7 +48,7 @@ Then restart the backend. If you previously hit the bright-catalog endpoint, the
 
 Windows quick start (one-click)
 
-If you prefer a double-clickable launcher, use the included `start_all.bat` from the repo root. It opens two command windows: one for the backend and one for the static frontend.
+dIf you prefer a double-clickable launcher, use the included `start_all.bat` from the repo root. It opens two command windows: one for the backend and one for the static frontend.
 
 Steps:
 
